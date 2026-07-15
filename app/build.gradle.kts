@@ -147,6 +147,10 @@ dependencies {
     implementation("sh.calvin.reorderable:reorderable:3.1.0") // for easier re-ordering
     implementation("com.github.skydoves:colorpicker-compose:1.1.3") // for user-defined colors
 
+    // On-device LLM for multi-word completion (prebuilt AAR, Apache-2.0). Requires minSdk 24:
+    // the app stays at minSdk 21 and the feature is gated at runtime on Build.VERSION.SDK_INT.
+    implementation("com.google.mediapipe:tasks-genai:0.10.24")
+
     // test
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")

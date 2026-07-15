@@ -140,6 +140,11 @@ public class LatinIME extends InputMethodService implements
     private View mInputView;
     private InsetsOutlineProvider mInsetsUpdater;
     private SuggestionStripView mSuggestionStripView;
+    private helium314.keyboard.latin.completion.CompletionStripView mCompletionStripView;
+    private helium314.keyboard.latin.completion.CompletionEngine mCompletionEngine;
+    private helium314.keyboard.latin.completion.ModelCompletionProvider mModelCompletionProvider;
+    private java.util.concurrent.ExecutorService mCompletionExecutor;
+    private volatile boolean mCompletionGenerating = false;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -551,6 +556,7 @@ public class LatinIME extends InputMethodService implements
         loadSettings();
         mClipboardHistoryManager.onCreate();
         mHandler.onCreate();
+        initCompletionEngine();
         if (FoldableUtils.INSTANCE.isFoldable())
             foldableObserver = new FoldableUtils.FoldableObserver(this);
 
@@ -704,6 +710,8 @@ public class LatinIME extends InputMethodService implements
         mStatsUtilsManager.onDestroy(this /* context */);
         super.onDestroy();
         mHandler.removeCallbacksAndMessages(null);
+        if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
+        if (mCompletionExecutor != null) mCompletionExecutor.shutdownNow();
         deallocateMemory();
     }
 
@@ -767,6 +775,11 @@ public class LatinIME extends InputMethodService implements
     public void updateSuggestionStripView(View view) {
         mSuggestionStripView = mSettings.getCurrent().mToolbarMode == ToolbarMode.HIDDEN || isEmojiSearch()?
                         null : view.findViewById(R.id.suggestion_strip_view);
+        mCompletionStripView = view.findViewById(R.id.completion_strip_view);
+        if (mCompletionStripView != null) {
+            mCompletionStripView.setListener((candidate, wordIndex) ->
+                    onCompletionWordAccepted(candidate, wordIndex));
+        }
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
             mSuggestionStripView.setListener(this, view);
@@ -796,6 +809,11 @@ public class LatinIME extends InputMethodService implements
         mStatsUtilsManager.onFinishInputView();
         mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
         BackgroundGatheringCache.saveOrClear(this);
+        if (mCompletionEngine != null) mCompletionEngine.invalidate();
+        if (mCompletionStripView != null) {
+            mCompletionStripView.clear();
+            mCompletionStripView.setVisibility(View.GONE);
+        }
     }
 
     @Override
@@ -1199,7 +1217,11 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         final int stripHeight = mKeyboardSwitcher.isShowingStripContainer() ? mKeyboardSwitcher.getStripContainer().getHeight() : 0;
-        int visibleTopY = inputHeight - visibleKeyboardView.getHeight() - stripHeight;
+        // the multi-word completion strip sits above the suggestion strip and, when shown, adds to
+        // the reserved keyboard region so it does not overlap the app's text field
+        final int completionStripHeight = (mCompletionStripView != null
+                && mCompletionStripView.getVisibility() == View.VISIBLE) ? mCompletionStripView.getHeight() : 0;
+        int visibleTopY = inputHeight - visibleKeyboardView.getHeight() - stripHeight - completionStripHeight;
         if (Settings.getValues().mIsFloatingKeyboard)
             visibleTopY = getResources().getDisplayMetrics().heightPixels;
 
@@ -1507,6 +1529,115 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(false);
             }
         }
+        updateCompletionStrip(currentSettingsValues);
+    }
+
+    /**
+     * Build the completion engine and its worker thread. Uses the on-device model provider when the
+     * device supports it and a model is installed; otherwise the stub provider (which also serves as
+     * a transparent fallback while the model is absent or loading).
+     */
+    private void initCompletionEngine() {
+        final helium314.keyboard.latin.completion.ModelRepository repo =
+                helium314.keyboard.latin.completion.ModelRepository.get(this);
+        helium314.keyboard.latin.completion.CompletionProvider provider =
+                new helium314.keyboard.latin.completion.StubCompletionProvider();
+        if (repo.isDeviceSupported()) {
+            try {
+                final helium314.keyboard.latin.completion.InferenceBackend backend =
+                        new helium314.keyboard.latin.completion.MediaPipeInferenceBackend(this);
+                mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
+                        backend, repo::installedModelPath);
+                provider = mModelCompletionProvider;
+            } catch (Throwable t) {
+                // if the MediaPipe runtime is unavailable for any reason, fall back to the stub
+                Log.w(TAG, "on-device model backend unavailable, using stub completions", t);
+            }
+        }
+        mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider);
+        mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    }
+
+    /**
+     * Update the multi-word completion strip. The fast prefix-filter runs synchronously on the UI
+     * thread (cheap, no model call); a fresh generation is dispatched to a background worker and its
+     * result swapped in later only if the context is still valid (epoch unchanged), so slow on-device
+     * inference never blocks typing.
+     */
+    private void updateCompletionStrip(final SettingsValues settingsValues) {
+        if (mCompletionStripView == null || mCompletionEngine == null) return;
+        final boolean eligible = settingsValues.mMultiwordCompletionEnabled
+                && hasSuggestionStripView()
+                && onEvaluateInputViewShown()
+                && !isFullscreenMode()
+                && !settingsValues.mIncognitoModeEnabled; // never generate in password/incognito/no-learning fields
+        if (!eligible) {
+            mCompletionEngine.invalidate();
+            mCompletionStripView.clear();
+            mCompletionStripView.setVisibility(View.GONE);
+            return;
+        }
+        // reserve a stable row while the feature is on, so the strip does not jitter the IME window
+        mCompletionStripView.setVisibility(View.VISIBLE);
+        if (mInputLogic.mConnection.hasSlowInputConnection()) {
+            mCompletionStripView.clear();
+            return;
+        }
+        final String prefix = mInputLogic.getCurrentlyComposingWord();
+        final CharSequence beforeCursor = mInputLogic.mConnection.getTextBeforeCursor(
+                Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+        if (beforeCursor == null) {
+            mCompletionStripView.clear();
+            return;
+        }
+        // leftContext is the committed text before the in-progress word (strip the typed prefix)
+        String leftContext = beforeCursor.toString();
+        if (!prefix.isEmpty() && leftContext.endsWith(prefix)) {
+            leftContext = leftContext.substring(0, leftContext.length() - prefix.length());
+        }
+        // fast path: filter the existing pool by prefix without any model call
+        final java.util.List<helium314.keyboard.latin.completion.CompletionCandidate> filtered =
+                mCompletionEngine.onPrefixChanged(leftContext, prefix);
+        if (filtered != null) {
+            mCompletionStripView.setCandidates(filtered, prefix);
+            return;
+        }
+        // slow path: regenerate off the UI thread; swap in only if still valid when it returns
+        final String genContext = leftContext;
+        final String genPrefix = prefix;
+        final int epochAtDispatch = mCompletionEngine.getCurrentEpoch();
+        if (mCompletionGenerating) return; // one in-flight generation at a time
+        mCompletionGenerating = true;
+        mCompletionExecutor.execute(() -> {
+            final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result;
+            try {
+                result = mCompletionEngine.regenerate(genContext, genPrefix);
+            } finally {
+                mCompletionGenerating = false;
+            }
+            mHandler.post(() -> {
+                if (mCompletionStripView == null) return;
+                // drop stale results: context changed (cursor move, commit, focus) since dispatch
+                if (mCompletionEngine.getCurrentEpoch() != epochAtDispatch) return;
+                mCompletionStripView.setCandidates(result.getCandidates(), genPrefix);
+            });
+        });
+    }
+
+    /**
+     * Handle a tap on a word in the completion strip: accept the completion up to (and including)
+     * the tapped word and commit it, mirroring the manual-suggestion-pick flow so typing state and
+     * cursor bookkeeping stay consistent.
+     */
+    private void onCompletionWordAccepted(
+            final helium314.keyboard.latin.completion.CompletionCandidate candidate, final int wordIndex) {
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        final String textToCommit = mCompletionEngine.accept(candidate, wordIndex);
+        final InputTransaction transaction = mInputLogic.commitAcceptedCompletion(
+                settingsValues, textToCommit, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
+        if (transaction != null) {
+            updateStateAfterInputTransaction(transaction);
+        }
     }
 
     @Override
@@ -1569,6 +1700,11 @@ public class LatinIME extends InputMethodService implements
             // clipboard suggestion has been set
             if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)
                 mSuggestionStripView.setToolbarVisibility(false);
+            if (mCompletionStripView != null) {
+                if (mCompletionEngine != null) mCompletionEngine.invalidate();
+                mCompletionStripView.clear();
+                mCompletionStripView.setVisibility(View.GONE);
+            }
             return;
         }
         final SuggestedWords neutralSuggestions = currentSettings.mSuggestPunctuation
@@ -1855,6 +1991,9 @@ public class LatinIME extends InputMethodService implements
             case TRIM_MEMORY_RUNNING_LOW, TRIM_MEMORY_RUNNING_CRITICAL, TRIM_MEMORY_COMPLETE -> {
                 KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
                 mKeyboardSwitcher.trimMemory();
+                // free the on-device model under memory pressure; it reloads lazily when next needed
+                if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
+                if (mCompletionEngine != null) mCompletionEngine.invalidate();
             }
             // deallocateMemory always called on hiding, and should not be called when showing
         }

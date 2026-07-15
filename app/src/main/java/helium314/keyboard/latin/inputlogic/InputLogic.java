@@ -1552,6 +1552,60 @@ public final class InputLogic {
         return false;
     }
 
+    /** The word currently being composed, or an empty string if not composing. Used by the completion strip. */
+    public String getCurrentlyComposingWord() {
+        return mWordComposer.isComposingWord() ? mWordComposer.getTypedWord() : "";
+    }
+
+    /**
+     * Commit an accepted multi-word completion. [textToCommit] is the full text to insert in place
+     * of the in-progress word (e.g. "good time last"); it replaces the current composing word if
+     * there is one. This mirrors the manual-suggestion-pick path so composing state, user-history
+     * learning and cursor bookkeeping stay consistent, then routes the resulting transaction back
+     * through the caller. Returns the transaction, or null if the edit could not be performed safely.
+     *
+     * For safety this only acts when either a normal word is being composed or nothing is (the
+     * common cases while typing); it does not attempt to replace text under an arbitrary selection.
+     */
+    public InputTransaction commitAcceptedCompletion(final SettingsValues settingsValues,
+            final String textToCommit, final CapsMode keyboardCapsMode, final LatinIME.UIHandler handler) {
+        if (textToCommit == null || textToCommit.isEmpty()) return null;
+        if (mConnection.hasSelection()) return null; // don't overwrite a user selection
+        if (mWordComposer.isBatchMode()) return null; // gesture-composed word: out of scope for now
+
+        final Event event = Event.createSuggestionPickedEvent(
+                new SuggestedWordInfo(textToCommit, "", SuggestedWordInfo.MAX_SCORE,
+                        SuggestedWordInfo.KIND_COMPLETION, Dictionary.DICTIONARY_USER_TYPED,
+                        SuggestedWordInfo.NOT_AN_INDEX, SuggestedWordInfo.NOT_A_CONFIDENCE));
+        final InputTransaction inputTransaction = new InputTransaction(settingsValues, event,
+                SystemClock.uptimeMillis(), mSpaceState, keyboardCapsMode);
+        inputTransaction.setDidAffectContents();
+
+        mConnection.beginBatchEdit();
+        if (!mWordComposer.isComposingWord()) {
+            // no active composition: insert an automatic space first if appropriate, exactly like a pick
+            if (SpaceState.PHANTOM == mSpaceState && !mJustRevertedACommit) {
+                final int firstChar = Character.codePointAt(textToCommit, 0);
+                if (!settingsValues.isWordSeparator(firstChar)
+                        || settingsValues.isUsuallyPrecededBySpace(firstChar)) {
+                    insertAutomaticSpaceIfOptionsAndTextAllow(settingsValues);
+                }
+            }
+        }
+        mJustRevertedACommit = false;
+        // commitChosenWord commits textToCommit; if a word is being composed, commitText replaces
+        // the live composing span, so the in-progress word is overwritten (no manual deletion)
+        commitChosenWord(settingsValues, textToCommit,
+                LastComposedWord.COMMIT_TYPE_MANUAL_PICK, LastComposedWord.NOT_A_SEPARATOR);
+        mConnection.endBatchEdit();
+        mLastComposedWord.deactivate();
+        if (settingsValues.mAutospaceAfterSuggestion)
+            mSpaceState = SpaceState.PHANTOM;
+        inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
+        handler.postUpdateSuggestionStrip(SuggestedWords.INPUT_STYLE_NONE);
+        return inputTransaction;
+    }
+
     void unlearnWord(String word, SettingsValues settingsValues, DictionaryFacilitator.UnlearnEvent event) {
         NgramContext ngramContext = mConnection.getNgramContextFromNthPreviousWord(settingsValues.mSpacingAndPunctuations, 2);
         long timeStampInSeconds = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis());

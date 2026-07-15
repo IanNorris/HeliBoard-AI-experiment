@@ -88,6 +88,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION = "autocorrect_capitalized_suggestion";
     public static final String PREF_CENTER_SUGGESTION_TEXT_TO_ENTER = "center_suggestion_text_to_enter";
     public static final String PREF_SHOW_SUGGESTIONS = "show_suggestions";
+    public static final String PREF_ENABLE_MULTIWORD_COMPLETION = "enable_multiword_completion";
     public static final String PREF_ALWAYS_SHOW_SUGGESTIONS = "always_show_suggestions";
     public static final String PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT = "always_show_suggestions_except_web_text";
     public static final String PREF_KEY_USE_PERSONALIZED_DICTS = "use_personalized_dicts";
