@@ -63,39 +63,39 @@ fun CompletionModelPreference() {
         else -> "${repo.model.displayName} — not downloaded"
     }
 
+    var selectedName by remember { mutableStateOf(repo.model.displayName) }
+
+    // single row: opens a dialog with model choice + download/import/delete
     Preference(
         name = "On-device completion model",
-        description = status,
+        description = "$selectedName — $status",
         onClick = { if (supported) showDialog = true },
-    )
-
-    // model selector: tap to cycle through the available models (llama.cpp base models + Gemma)
-    var selectedName by remember { mutableStateOf(repo.model.displayName) }
-    Preference(
-        name = "Model: $selectedName",
-        description = "Tap to switch model, then download/import it below",
-        onClick = {
-            val models = repo.availableModels
-            val idx = models.indexOfFirst { it.id == repo.model.id }
-            val next = models[(idx + 1) % models.size]
-            repo.selectModel(next.id)
-            selectedName = next.displayName
-            installed = repo.isInstalled()
-            progress = if (installed) DownloadState.Ready else DownloadState.NotDownloaded
-        },
     )
 
     if (showDialog) {
         ConfirmationDialog(
             onDismissRequest = { showDialog = false },
-            title = { androidx.compose.material3.Text(repo.model.displayName) },
+            title = { androidx.compose.material3.Text("Completion model") },
             content = {
-                androidx.compose.material3.Text(
-                    if (installed) "The model is installed. You can delete it to free space."
-                    else "Download “${repo.model.displayName}” from the model page (you'll need to accept " +
-                            "${repo.model.license} there), then use “Import file” to load the .task. " +
-                            "It is stored privately on your device and used entirely offline."
-                )
+                androidx.compose.foundation.layout.Column {
+                    androidx.compose.material3.Text(
+                        if (installed) "“$selectedName” is installed. Delete it to free space, or switch to a different model."
+                        else "Selected: “$selectedName” (${repo.model.license}).\n\n" +
+                                "Download it from the model page (accept the licence there if asked), then use “Import file”. " +
+                                "It is stored privately on your device and used entirely offline."
+                    )
+                    androidx.compose.material3.TextButton(onClick = {
+                        val models = repo.availableModels
+                        val idx = models.indexOfFirst { it.id == repo.model.id }
+                        val next = models[(idx + 1) % models.size]
+                        repo.selectModel(next.id)
+                        selectedName = next.displayName
+                        installed = repo.isInstalled()
+                        progress = if (installed) DownloadState.Ready else DownloadState.NotDownloaded
+                    }) {
+                        androidx.compose.material3.Text("Switch model ⟳")
+                    }
+                }
             },
             confirmButtonText = if (installed) "Delete" else "Open model page",
             onConfirmed = {
@@ -105,7 +105,7 @@ fun CompletionModelPreference() {
                     installed = false
                     progress = DownloadState.NotDownloaded
                 } else {
-                    // open the (gated) model page so the user can accept the license and download it
+                    // open the model page so the user can (accept the licence and) download it
                     runCatching {
                         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(repo.model.licenseUrl))
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -115,7 +115,7 @@ fun CompletionModelPreference() {
             neutralButtonText = if (installed) null else "Import file",
             onNeutral = {
                 showDialog = false
-                // MediaPipe .task bundles have no standard MIME; accept any file
+                // model bundles have no standard MIME; accept any file
                 importLauncher.launch(arrayOf("*/*"))
             },
         )
