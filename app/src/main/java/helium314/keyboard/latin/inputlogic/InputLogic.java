@@ -112,6 +112,8 @@ public final class InputLogic {
 
     private int mDeleteCount;
     private long mLastKeyTime;
+    // uptime of the last long-press word deletion, used to throttle how fast held backspace removes words
+    private long mLastWordDeleteTime;
     // todo: this is not used, so either remove it or do something with it
     public final TreeSet<Long> mCurrentlyPressedHardwareKeys = new TreeSet<>();
 
@@ -1256,6 +1258,20 @@ public final class InputLogic {
                 ? InputTransaction.SHIFT_UPDATE_LATER
                 : InputTransaction.SHIFT_UPDATE_NOW;
         inputTransaction.requireShiftUpdate(shiftUpdateKind);
+
+        // Throttle held-backspace word deletion so it does not run away at the key-repeat rate.
+        // When enabled and this is a key repeat, only allow a word deletion once per configured
+        // interval; earlier repeats are consumed without deleting anything.
+        if (event.isKeyRepeat()
+                && inputTransaction.getSettingsValues().mLongpressBackspaceDeleteWord
+                && !mConnection.hasSelection()) {
+            final int interval = inputTransaction.getSettingsValues().mLongpressBackspaceDeleteWordInterval;
+            final long now = SystemClock.uptimeMillis();
+            if (interval > 0 && now - mLastWordDeleteTime < interval) {
+                return;
+            }
+            mLastWordDeleteTime = now;
+        }
 
         if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {
             // If we are in the middle of a recorrection, we need to commit the recorrection

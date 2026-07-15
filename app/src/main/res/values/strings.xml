@@ -228,6 +228,8 @@
     <string name="longpress_backspace_delete_word">Hold delete to remove words</string>
     <!-- Description for "longpress_backspace_delete_word" option. -->
     <string name="longpress_backspace_delete_word_summary">When holding the delete key, remove whole words at a time instead of single characters</string>
+    <!-- Title of the slider setting for how fast held backspace removes words. -->
+    <string name="longpress_backspace_delete_word_interval">Word delete interval</string>
     <!-- Preferences item and dialog title for backup and restore -->
     <string name="backup_restore_title">Backup and restore</string>
     <!-- Message for backup and restore dialog -->
