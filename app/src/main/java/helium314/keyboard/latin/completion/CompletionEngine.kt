@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * The engine itself is intentionally free of Android and threading dependencies so it can be unit
  * tested on the JVM; the IME layer owns the debounce timer, the background thread and the view.
  */
-class CompletionEngine(
+class CompletionEngine @JvmOverloads constructor(
     private val provider: CompletionProvider,
     private val maxCandidates: Int = 3,
     private val poolSize: Int = 12,

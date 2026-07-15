@@ -1475,6 +1475,11 @@ public final class InputLogic {
         return false;
     }
 
+    /** The word currently being composed, or an empty string if not composing. Used by the completion strip. */
+    public String getCurrentlyComposingWord() {
+        return mWordComposer.isComposingWord() ? mWordComposer.getTypedWord() : "";
+    }
+
     void unlearnWord(String word, SettingsValues settingsValues, DictionaryFacilitator.UnlearnEvent event) {
         NgramContext ngramContext = mConnection.getNgramContextFromNthPreviousWord(settingsValues.mSpacingAndPunctuations, 2);
         long timeStampInSeconds = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis());

@@ -140,6 +140,10 @@ public class LatinIME extends InputMethodService implements
     private View mInputView;
     private InsetsOutlineProvider mInsetsUpdater;
     private SuggestionStripView mSuggestionStripView;
+    private helium314.keyboard.latin.completion.CompletionStripView mCompletionStripView;
+    private final helium314.keyboard.latin.completion.CompletionEngine mCompletionEngine =
+            new helium314.keyboard.latin.completion.CompletionEngine(
+                    new helium314.keyboard.latin.completion.StubCompletionProvider());
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -767,6 +771,7 @@ public class LatinIME extends InputMethodService implements
     public void updateSuggestionStripView(View view) {
         mSuggestionStripView = mSettings.getCurrent().mToolbarMode == ToolbarMode.HIDDEN || isEmojiSearch()?
                         null : view.findViewById(R.id.suggestion_strip_view);
+        mCompletionStripView = view.findViewById(R.id.completion_strip_view);
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
             mSuggestionStripView.setListener(this, view);
@@ -796,6 +801,8 @@ public class LatinIME extends InputMethodService implements
         mStatsUtilsManager.onFinishInputView();
         mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
         BackgroundGatheringCache.saveOrClear(this);
+        mCompletionEngine.invalidate();
+        if (mCompletionStripView != null) mCompletionStripView.clear();
     }
 
     @Override
@@ -1507,6 +1514,47 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(false);
             }
         }
+        updateCompletionStrip(currentSettingsValues);
+    }
+
+    /**
+     * Slice 1a of the multi-word completion feature: render (only) stub completions in the strip
+     * above the suggestions. This performs no text mutation; tap-to-accept is added separately.
+     * The strip is hidden unless the experimental setting is on and a soft suggestion strip exists.
+     */
+    private void updateCompletionStrip(final SettingsValues settingsValues) {
+        if (mCompletionStripView == null) return;
+        final boolean eligible = settingsValues.mMultiwordCompletionEnabled
+                && hasSuggestionStripView()
+                && onEvaluateInputViewShown()
+                && !isFullscreenMode();
+        if (!eligible) {
+            mCompletionEngine.invalidate();
+            mCompletionStripView.clear();
+            return;
+        }
+        if (mInputLogic.mConnection.hasSlowInputConnection()) {
+            mCompletionStripView.clear();
+            return;
+        }
+        final String prefix = mInputLogic.getCurrentlyComposingWord();
+        final CharSequence beforeCursor = mInputLogic.mConnection.getTextBeforeCursor(
+                Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+        if (beforeCursor == null) {
+            mCompletionStripView.clear();
+            return;
+        }
+        // leftContext is the committed text before the in-progress word (strip the typed prefix)
+        String leftContext = beforeCursor.toString();
+        if (!prefix.isEmpty() && leftContext.endsWith(prefix)) {
+            leftContext = leftContext.substring(0, leftContext.length() - prefix.length());
+        }
+        java.util.List<helium314.keyboard.latin.completion.CompletionCandidate> candidates =
+                mCompletionEngine.onPrefixChanged(leftContext, prefix);
+        if (candidates == null) {
+            candidates = mCompletionEngine.regenerate(leftContext, prefix).getCandidates();
+        }
+        mCompletionStripView.setCandidates(candidates, prefix);
     }
 
     @Override
@@ -1569,6 +1617,10 @@ public class LatinIME extends InputMethodService implements
             // clipboard suggestion has been set
             if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)
                 mSuggestionStripView.setToolbarVisibility(false);
+            if (mCompletionStripView != null) {
+                mCompletionEngine.invalidate();
+                mCompletionStripView.clear();
+            }
             return;
         }
         final SuggestedWords neutralSuggestions = currentSettings.mSuggestPunctuation

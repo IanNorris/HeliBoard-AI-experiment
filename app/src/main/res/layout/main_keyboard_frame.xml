@@ -12,6 +12,12 @@
     android:layout_gravity="bottom"
     android:orientation="vertical" >
 
+    <helium314.keyboard.latin.completion.CompletionStripView
+        android:id="@+id/completion_strip_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+
     <include
         android:id="@+id/strip_container"
         layout="@layout/strip_container" />
