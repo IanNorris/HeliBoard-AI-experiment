@@ -1545,17 +1545,35 @@ public class LatinIME extends InputMethodService implements
         if (repo.isDeviceSupported()) {
             try {
                 final helium314.keyboard.latin.completion.InferenceBackend backend =
-                        new helium314.keyboard.latin.completion.MediaPipeInferenceBackend(this);
-                mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
-                        backend, repo::installedModelPath);
-                provider = mModelCompletionProvider;
+                        createInferenceBackend(repo);
+                if (backend != null) {
+                    mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
+                            backend, repo::installedModelPath);
+                    provider = mModelCompletionProvider;
+                }
             } catch (Throwable t) {
-                // if the MediaPipe runtime is unavailable for any reason, fall back to the stub
+                // if the model runtime is unavailable for any reason, fall back to the stub
                 Log.w(TAG, "on-device model backend unavailable, using stub completions", t);
             }
         }
         mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider);
         mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    }
+
+    /** Pick the inference backend matching the default model's runtime (llama.cpp for GGUF base models). */
+    private helium314.keyboard.latin.completion.InferenceBackend createInferenceBackend(
+            final helium314.keyboard.latin.completion.ModelRepository repo) {
+        final helium314.keyboard.latin.completion.ModelInfo.Runtime runtime = repo.getModel().getRuntime();
+        if (runtime == helium314.keyboard.latin.completion.ModelInfo.Runtime.LLAMA_CPP) {
+            final helium314.keyboard.latin.completion.LlamaCppInferenceBackend llama =
+                    new helium314.keyboard.latin.completion.LlamaCppInferenceBackend();
+            if (!llama.isNativeAvailable()) {
+                Log.w(TAG, "llama.cpp native library not available on this ABI");
+                return null;
+            }
+            return llama;
+        }
+        return new helium314.keyboard.latin.completion.MediaPipeInferenceBackend(this);
     }
 
     /**

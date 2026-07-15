@@ -20,10 +20,13 @@ data class ModelInfo(
     val sha256: String,
     val license: String,
     val licenseUrl: String,
-    val minSdk: Int = 24,
+    val runtime: Runtime = Runtime.LLAMA_CPP,
+    val minSdk: Int = 23,
 ) {
-    /** File name used for the installed model on disk. */
-    val fileName: String get() = "$id.task"
+    enum class Runtime { LLAMA_CPP, MEDIAPIPE }
+
+    /** File name used for the installed model on disk (extension follows the runtime). */
+    val fileName: String get() = if (runtime == Runtime.MEDIAPIPE) "$id.task" else "$id.gguf"
 
     /** Whether integrity should be checked (a hash is present). */
     val hasChecksum: Boolean get() = sha256.isNotBlank()
@@ -40,15 +43,30 @@ data class ModelInfo(
  */
 object ModelCatalog {
     val MODELS: List<ModelInfo> = listOf(
+        // Default: a small BASE model (continues text rather than chatting) via llama.cpp. Apache-2.0
+        // and a genuine base checkpoint - the right fit for autocomplete.
+        ModelInfo(
+            id = "smollm2-360m-base",
+            displayName = "SmolLM2 360M (base, 4-bit)",
+            url = "https://huggingface.co/QuantFactory/SmolLM2-360M-GGUF/resolve/main/SmolLM2-360M.Q4_K_M.gguf?download=true",
+            sizeBytes = 0L, // exact size TBD; empty skips the size check
+            sha256 = "",    // SHA-256 TBD; empty skips integrity check
+            license = "Apache-2.0",
+            licenseUrl = "https://huggingface.co/QuantFactory/SmolLM2-360M-GGUF",
+            runtime = ModelInfo.Runtime.LLAMA_CPP,
+            minSdk = 23,
+        ),
+        // Alternative: Gemma 3 1B instruct via MediaPipe. Instruct model - tends to answer rather
+        // than continue; kept as a comparison option. Gated on Hugging Face.
         ModelInfo(
             id = "gemma3-1b-it-int4",
-            displayName = "Gemma 3 1B (4-bit)",
-            // official host; the user accepts Google's license on the model page before download
-            url = "https://storage.googleapis.com/mediapipe-models/llm_inference/gemma3-1b-it-int4/gemma3-1b-it-int4.task",
-            sizeBytes = 0L, // TODO: fill exact byte size before shipping (verified on-device)
-            sha256 = "",    // TODO: fill SHA-256 before shipping; empty skips verification
+            displayName = "Gemma 3 1B (instruct, 4-bit)",
+            url = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task?download=true",
+            sizeBytes = 0L,
+            sha256 = "",
             license = "Gemma Terms of Use",
-            licenseUrl = "https://ai.google.dev/gemma/terms",
+            licenseUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT",
+            runtime = ModelInfo.Runtime.MEDIAPIPE,
             minSdk = 24,
         ),
     )
