@@ -7,5 +7,5 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <uses-sdk tools:overrideLibrary="com.google.mediapipe.tasks.genai, helium314.keyboard.llama" />
+    <uses-sdk tools:overrideLibrary="helium314.keyboard.llama" />
 </manifest>

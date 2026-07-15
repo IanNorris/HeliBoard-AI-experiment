@@ -4,6 +4,7 @@ package helium314.keyboard.settings.screens
 import android.Manifest
 import android.content.Context
 import android.os.Build
+import helium314.keyboard.latin.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Surface
@@ -80,9 +81,13 @@ fun TextCorrectionScreen(
         R.string.settings_category_suggestions,
         if (suggestionsVisible) Settings.PREF_SHOW_SUGGESTIONS else null,
         Settings.PREF_ENABLE_MULTIWORD_COMPLETION,
-        if (prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION))
+        // The LLM source toggle and model manager only make sense when llama.cpp is compiled in;
+        // otherwise completion always uses the n-gram chain and there is nothing to choose.
+        if (BuildConfig.HAS_LLAMA
+            && prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION))
             Settings.PREF_COMPLETION_USE_NGRAM_CHAIN else null,
-        if (prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+        if (BuildConfig.HAS_LLAMA
+            && prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
             && !prefs.getBoolean(Settings.PREF_COMPLETION_USE_NGRAM_CHAIN, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN))
             SettingsWithoutKey.MANAGE_COMPLETION_MODEL else null,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,

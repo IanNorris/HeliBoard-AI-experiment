@@ -8,6 +8,12 @@ plugins {
     kotlin("plugin.compose") version "2.3.20"
 }
 
+// Optional on-device LLM: when `enableLlama` is true (default) the :llama native module (llama.cpp)
+// is built in and the LLM completion source is available; when false, the module is dropped for a
+// lighter build and completions fall back to the personalized n-gram chain. Toggle with
+// `-PenableLlama=false` or in gradle.properties.
+val enableLlama = (project.findProperty("enableLlama")?.toString() ?: "true").toBoolean()
+
 android {
     compileSdk = 36
 
@@ -22,6 +28,7 @@ android {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        buildConfigField("boolean", "HAS_LLAMA", enableLlama.toString())
     }
 
     buildTypes {
@@ -77,6 +84,12 @@ android {
         viewBinding = true
         buildConfig = true
         compose = true
+    }
+
+    // The single class that touches the :llama module lives in a source set added only when llama is
+    // enabled; a null-returning twin (src/noLlama) keeps the app compiling without the module.
+    sourceSets {
+        getByName("main").java.srcDir(if (enableLlama) "src/llama/java" else "src/noLlama/java")
     }
 
     externalNativeBuild {
@@ -147,12 +160,9 @@ dependencies {
     implementation("sh.calvin.reorderable:reorderable:3.1.0") // for easier re-ordering
     implementation("com.github.skydoves:colorpicker-compose:1.1.3") // for user-defined colors
 
-    // On-device LLM for multi-word completion (prebuilt AAR, Apache-2.0). Requires minSdk 24:
-    // the app stays at minSdk 21 and the feature is gated at runtime on Build.VERSION.SDK_INT.
-    implementation("com.google.mediapipe:tasks-genai:0.10.24")
-
-    // On-device llama.cpp backend for base-model text completion (separate module: CMake native build)
-    implementation(project(":llama"))
+    // On-device llama.cpp backend for base-model text completion (separate module: CMake native
+    // build). Optional: excluded when `enableLlama` is false for a lighter APK.
+    if (enableLlama) implementation(project(":llama"))
 
     // test
     testImplementation(kotlin("test"))

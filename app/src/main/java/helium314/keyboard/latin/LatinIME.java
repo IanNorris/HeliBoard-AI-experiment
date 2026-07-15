@@ -1559,11 +1559,12 @@ public class LatinIME extends InputMethodService implements
         final helium314.keyboard.latin.completion.ModelRepository repo =
                 helium314.keyboard.latin.completion.ModelRepository.get(this);
         mCompletionModelId = repo.getEffectiveModel().getId();
-        mCompletionUseNgramChain = mSettings.getCurrent().mCompletionUseNgramChain;
+        // Without llama.cpp compiled in there is no LLM source, so always chain the n-gram predictor.
+        mCompletionUseNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
         helium314.keyboard.latin.completion.CompletionProvider provider =
                 new helium314.keyboard.latin.completion.StubCompletionProvider();
         if (mCompletionUseNgramChain) {
-            // Experimental source: skip the LLM and chain the keyboard's own next-word predictor.
+            // Skip the LLM and chain the keyboard's own (personalized) next-word predictor.
             provider = new helium314.keyboard.latin.completion.NgramChainCompletionProvider(
                     this::predictNextWordsForCompletion);
         } else if (repo.isDeviceSupported()) {
@@ -1590,7 +1591,7 @@ public class LatinIME extends InputMethodService implements
         final helium314.keyboard.latin.completion.ModelRepository repo =
                 helium314.keyboard.latin.completion.ModelRepository.get(this);
         final String current = repo.getEffectiveModel().getId();
-        final boolean useNgramChain = mSettings.getCurrent().mCompletionUseNgramChain;
+        final boolean useNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
         final boolean modelSame = current == null ? mCompletionModelId == null : current.equals(mCompletionModelId);
         if (modelSame && useNgramChain == mCompletionUseNgramChain) return;
         if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
@@ -1639,20 +1640,13 @@ public class LatinIME extends InputMethodService implements
         return out;
     }
 
-    /** Pick the inference backend matching the effective (installed) model's runtime. */
+    /** The llama.cpp inference backend if it is compiled in and its native lib loaded, else null. */
     private helium314.keyboard.latin.completion.InferenceBackend createInferenceBackend(
             final helium314.keyboard.latin.completion.ModelRepository repo) {
-        final helium314.keyboard.latin.completion.ModelInfo.Runtime runtime = repo.getEffectiveModel().getRuntime();
-        if (runtime == helium314.keyboard.latin.completion.ModelInfo.Runtime.LLAMA_CPP) {
-            final helium314.keyboard.latin.completion.LlamaCppInferenceBackend llama =
-                    new helium314.keyboard.latin.completion.LlamaCppInferenceBackend();
-            if (!llama.isNativeAvailable()) {
-                Log.w(TAG, "llama.cpp native library not available on this ABI");
-                return null;
-            }
-            return llama;
-        }
-        return new helium314.keyboard.latin.completion.MediaPipeInferenceBackend(this);
+        final helium314.keyboard.latin.completion.InferenceBackend backend =
+                helium314.keyboard.latin.completion.LlamaSupport.INSTANCE.createBackendOrNull();
+        if (backend == null) Log.w(TAG, "llama.cpp backend not available (disabled or unsupported ABI)");
+        return backend;
     }
 
     /**
