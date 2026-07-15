@@ -111,6 +111,13 @@ class KeyboardParser(private val params: KeyboardParams, private val context: Co
             params.baseKeys = baseKeys.flatMap { row -> row.map { it.toKeyParams(params) } }
 
         val allFunctionalKeys = LayoutParser.parseLayout(LayoutType.FUNCTIONAL, params, context)
+        // optionally remove the symbol (?123) key from the bottom row on the alphabet keyboard;
+        // it is kept on the symbol layout, where the same key acts as the "ABC" toggle back
+        if (Settings.getValues().mHideBottomSymbolKey && params.mId.element.isAlphabet) {
+            allFunctionalKeys.forEach { row ->
+                row.removeAll { it.label == KeyLabel.SYMBOL_ALPHA || it.label == KeyLabel.SYMBOL }
+            }
+        }
         adjustBottomFunctionalRowAndBaseKeys(allFunctionalKeys, baseKeys)
 
         if (allFunctionalKeys.none { it.singleOrNull()?.isKeyPlaceholder() == true })

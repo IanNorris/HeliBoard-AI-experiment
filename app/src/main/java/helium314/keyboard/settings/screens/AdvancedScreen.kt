@@ -78,6 +78,7 @@ fun AdvancedSettingsScreen(
             Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_ACCELERATION else null,
         Settings.PREF_SPACE_TO_CHANGE_LANG,
         Settings.PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD,
+        Settings.PREF_HIDE_BOTTOM_SYMBOL_KEY,
         Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY,
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) Settings.PREF_SHOW_SETUP_WIZARD_ICON else null,
         Settings.PREF_ABC_AFTER_SYMBOL_SPACE,
@@ -194,6 +195,10 @@ fun createAdvancedSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD, R.string.prefs_long_press_symbol_for_numpad) {
         SwitchPreference(it, Defaults.PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD)
+    },
+    Setting(context, Settings.PREF_HIDE_BOTTOM_SYMBOL_KEY,
+        R.string.hide_bottom_symbol_key, R.string.hide_bottom_symbol_key_summary) {
+        SwitchPreference(it, Defaults.PREF_HIDE_BOTTOM_SYMBOL_KEY) { KeyboardSwitcher.getInstance().setThemeNeedsReload() }
     },
     Setting(context, Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY, R.string.prefs_enable_emoji_alt_physical_key,
         R.string.prefs_enable_emoji_alt_physical_key_summary)

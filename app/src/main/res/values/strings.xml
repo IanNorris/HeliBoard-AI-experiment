@@ -385,6 +385,7 @@
     <string name="close_history" tools:keep="@string/close_history">Close clipboard history</string>
     <string name="emoji" tools:keep="@string/emoji">Emoji</string>
     <string name="floating" tools:keep="@string/floating">Floating Keyboard</string>
+    <string name="symbols" tools:keep="@string/symbols">Symbols</string>
     <!-- Title of the setting to set clipboard toolbar keys -->
     <string name="clipboard_toolbar_keys">Select clipboard toolbar keys</string>
     <!-- Title of the setting to set pinned toolbar keys -->
@@ -407,6 +408,10 @@
     <string name="prefs_long_press_keyboard_to_change_lang_summary">Long pressing space key will prompt input method selection menu</string>
     <!-- Title of the setting enabling long press on symbols key to switch to numpad -->
     <string name="prefs_long_press_symbol_for_numpad">Long press symbols key for numpad</string>
+    <!-- Title of the option to remove the symbol (?123) key from the bottom row. -->
+    <string name="hide_bottom_symbol_key">Hide symbol key on bottom row</string>
+    <!-- Description for "hide_bottom_symbol_key" option. -->
+    <string name="hide_bottom_symbol_key_summary">Remove the ?123 key from the bottom row (widening the space bar). Add the \"Symbols\" key to the toolbar to still reach symbols</string>
     <!-- Title of the setting for reduced distance between keys, todo: not used any more -->
     <string name="prefs_narrow_key_gaps">Narrow key gaps</string>
     <!-- Title of the setting for setting distance between keys -->
