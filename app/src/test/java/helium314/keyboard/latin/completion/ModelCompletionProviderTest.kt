@@ -11,6 +11,7 @@ class ModelCompletionProviderTest {
 
     private class FakeBackend(
         var output: String = "good time last week",
+        var outputs: List<String>? = null,
         var failLoad: Boolean = false,
         var failGenerate: Boolean = false,
     ) : InferenceBackend {
@@ -28,6 +29,11 @@ class ModelCompletionProviderTest {
             generateCount++
             if (failGenerate) throw RuntimeException("gen boom")
             return output
+        }
+        override fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<String> {
+            generateCount++
+            if (failGenerate) throw RuntimeException("gen boom")
+            return outputs ?: listOf(output)
         }
         override fun close() { closeCount++; loaded = false }
     }
@@ -63,15 +69,23 @@ class ModelCompletionProviderTest {
     }
 
     @Test
-    fun generate_returnsProgressiveCandidatesFromOneContinuation() {
-        val backend = FakeBackend(output = "good time last week")
-        val provider = ModelCompletionProvider(backend, { "/models/x.task" })
+    fun generate_returnsDistinctCandidatesFromMultipleSamples() {
+        val backend = FakeBackend(outputs = listOf(
+            "good time last week", "great night out tonight", "good time last week"))
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
         val result = provider.generate(ctx(), max = 3)
-        // longest first, then shorter safe prefixes
+        // distinct on first two words; the duplicate "good time..." is dropped
+        assertEquals(2, result.size)
         assertEquals(listOf("good", "time", "last", "week"), result[0].words)
-        assertEquals(listOf("good", "time", "last"), result[1].words)
-        assertEquals(listOf("good", "time"), result[2].words)
-        assertEquals(3, result.size)
+        assertEquals(listOf("great", "night", "out", "tonight"), result[1].words)
+    }
+
+    @Test
+    fun generate_capsCandidatesToMaxWords() {
+        val backend = FakeBackend(output = "one two three four five six")
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        val result = provider.generate(ctx(), max = 3)
+        assertEquals(listOf("one", "two", "three", "four"), result[0].words) // capped at 4 words
     }
 
     @Test

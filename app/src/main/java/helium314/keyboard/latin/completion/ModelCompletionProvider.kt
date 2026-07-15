@@ -20,7 +20,7 @@ package helium314.keyboard.latin.completion
 class ModelCompletionProvider @JvmOverloads constructor(
     private val backend: InferenceBackend,
     private val modelPathProvider: ModelPathProvider,
-    private val maxTokens: Int = 12,
+    private val maxTokens: Int = 8,
 ) : CompletionProvider {
 
     /** Supplies the installed model path (or null if absent). A SAM type so Java can pass a method ref. */
@@ -32,6 +32,11 @@ class ModelCompletionProvider @JvmOverloads constructor(
 
     @Volatile private var loadFailed = false
 
+    private companion object {
+        const val OVERSAMPLE = 5   // generate this many, dedupe down to the requested count
+        const val MAX_WORDS = 4    // keyboard-appropriate short continuations
+    }
+
     /** Whether a model is installed and the backend is ready (or can be made ready). */
     fun isModelAvailable(): Boolean = modelPathProvider.getPath() != null && !loadFailed
 
@@ -40,12 +45,9 @@ class ModelCompletionProvider @JvmOverloads constructor(
 
         // Mid-word anchoring: if the dictionary has a completion for the fragment (e.g. "ti"->"time"),
         // prompt the model with the COMPLETED word ("What time") and prepend that word to the result.
-        // This gives a reliable first word (the model can't guess "time" from "ti") and no language
-        // drift. Falls back to raw-fragment continuation if there is no dictionary word.
         val anchorWord = context.dictionaryWord.takeIf {
             it.isNotEmpty() && it.startsWith(partial, ignoreCase = true) && it.length > partial.length
         }
-
         val basePrompt = when {
             partial.isEmpty() -> context.leftContext
             anchorWord != null -> context.leftContext + anchorWord
@@ -54,31 +56,48 @@ class ModelCompletionProvider @JvmOverloads constructor(
         val prompt = PromptBuilder.build(basePrompt) ?: return emptyList()
         if (!ensureLoaded()) return emptyList()
 
-        val raw = try {
-            backend.generate(prompt, maxTokens)
+        // Generate several diverse SHORT continuations and show them as distinct options (rather than
+        // one long phrase truncated to different lengths). Each is capped to a few words for keyboard
+        // usefulness; tap-to-accept then extends from the new context.
+        val raws = try {
+            backend.generateMulti(prompt, maxTokens, OVERSAMPLE)
         } catch (e: Exception) {
-            // a generation failure shouldn't kill the feature; degrade to no model candidates
             return emptyList()
         }
 
-        if (partial.isEmpty()) {
-            val parsed = ResponseParser.parse(raw, promptEcho = prompt) ?: return emptyList()
-            return expand(parsed, max)
+        val candidates = ArrayList<CompletionCandidate>()
+        for (raw in raws) {
+            val cand = when {
+                partial.isEmpty() ->
+                    ResponseParser.parse(raw, promptEcho = prompt, maxWords = MAX_WORDS)
+                anchorWord != null -> {
+                    val c = ResponseParser.parse("$anchorWord ${raw.trimStart()}", maxWords = MAX_WORDS)
+                    c?.takeIf { it.firstWord.equals(anchorWord, ignoreCase = true) }
+                }
+                else -> {
+                    if (raw.isEmpty() || raw[0].isWhitespace()) null
+                    else ResponseParser.parse(partial + raw, maxWords = MAX_WORDS)
+                        ?.takeIf { it.firstWord.startsWith(partial, ignoreCase = true) }
+                }
+            } ?: continue
+            candidates.add(cand)
         }
+        return dedupeDistinct(candidates, max)
+    }
 
-        if (anchorWord != null) {
-            // the model continued from a complete word; the continuation should start with a space
-            val continuation = raw.trimStart()
-            val parsed = ResponseParser.parse("$anchorWord $continuation") ?: return emptyList()
-            if (!parsed.firstWord.equals(anchorWord, ignoreCase = true)) return emptyList()
-            return expand(parsed, max)
+    /** Keep candidates that are distinct on their first two words, capped at [max]. */
+    private fun dedupeDistinct(candidates: List<CompletionCandidate>, max: Int): List<CompletionCandidate> {
+        val seen = HashSet<String>()
+        val out = ArrayList<CompletionCandidate>(max)
+        for (c in candidates) {
+            if (c.words.isEmpty()) continue
+            val key = c.words.take(2).joinToString(" ") { it.lowercase() }
+            if (seen.add(key)) {
+                out.add(c)
+                if (out.size >= max) break
+            }
         }
-
-        // no dictionary anchor: reattach the raw fragment (best effort for a base model)
-        if (raw.isEmpty() || raw[0].isWhitespace()) return emptyList()
-        val parsed = ResponseParser.parse(partial + raw) ?: return emptyList()
-        if (!parsed.firstWord.startsWith(partial, ignoreCase = true)) return emptyList()
-        return expand(parsed, max)
+        return out
     }
 
     /** Load the model if needed; returns false (and latches failure) if it can't be made ready. */
@@ -99,20 +118,5 @@ class ModelCompletionProvider @JvmOverloads constructor(
     fun releaseModel() {
         try { backend.close() } catch (_: Exception) { }
         loadFailed = false
-    }
-
-    /**
-     * Turn one continuation into up to [max] progressively-shorter candidates, longest first, so the
-     * user sees the full continuation plus shorter safe prefixes to tap.
-     */
-    private fun expand(candidate: CompletionCandidate, max: Int): List<CompletionCandidate> {
-        if (max <= 1 || candidate.words.size <= 1) return listOf(candidate)
-        val result = ArrayList<CompletionCandidate>(minOf(max, candidate.words.size))
-        var len = candidate.words.size
-        while (len >= 1 && result.size < max) {
-            result.add(CompletionCandidate(candidate.words.take(len)))
-            len--
-        }
-        return result
     }
 }

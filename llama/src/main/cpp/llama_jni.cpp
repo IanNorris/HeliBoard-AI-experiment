@@ -69,19 +69,8 @@ jlong nativeLoad(JNIEnv* env, jobject, jstring jpath, jint n_ctx, jint n_threads
     llama_context* ctx = llama_init_from_model(model, cp);
     if (!ctx) { LOGE("context init failed"); llama_model_free(model); return 0; }
 
-    // Light sampling (not greedy): a repetition penalty avoids loops ("greasy, greasy, greasy"),
-    // while min-p rejects low-probability tokens (so suggestions are the model's CONFIDENT choices,
-    // not tail picks) and a low temperature keeps output grounded. Keyboard-appropriate stability.
-    llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(/*last_n*/ 64, /*repeat*/ 1.3f, 0.0f, 0.0f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.1f, 1));   // drop tokens well below the top
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.2f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
-
     Session* s = new Session();
-    s->model = model; s->ctx = ctx; s->sampler = smpl;
+    s->model = model; s->ctx = ctx; s->sampler = nullptr;  // samplers are built per generation call
     s->vocab = llama_model_get_vocab(model);
     s->n_ctx = (int) cp.n_ctx;
 
@@ -90,56 +79,101 @@ jlong nativeLoad(JNIEnv* env, jobject, jstring jpath, jint n_ctx, jint n_threads
     return (jlong) handle;
 }
 
-jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens) {
-    Session* s = lookup((int64_t) handle);
-    if (!s) return env->NewStringUTF("");
+// Build a per-call sampler. Low repetition penalty (1.1) - a high one (1.3) is essay-anti-loop
+// tuning that distorts short natural phrasing into "encyclopedia" text. Temperature/seed vary per
+// candidate: a low temp gives a "safe" pick, higher temps give diverse alternatives.
+static llama_sampler* build_sampler(float temp, uint32_t seed) {
+    llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(/*last_n*/ 64, /*repeat*/ 1.1f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(temp));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
+    return smpl;
+}
 
-    const char* promptC = env->GetStringUTFChars(jprompt, nullptr);
-    std::string prompt = promptC ? promptC : "";
-    env->ReleaseStringUTFChars(jprompt, promptC);
-    if (prompt.empty()) return env->NewStringUTF("");
-
-    // fresh, independent completion (no leakage between keystrokes)
+// Generate one short continuation of an already-tokenized prompt using the given sampler.
+static std::string generate_one(Session* s, const std::vector<llama_token>& toks,
+                                llama_sampler* smpl, int maxTokens) {
     llama_memory_clear(llama_get_memory(s->ctx), true);
-    llama_sampler_reset(s->sampler);  // clear penalty history so each completion is independent
+    llama_batch batch = llama_batch_get_one(const_cast<llama_token*>(toks.data()), (int32_t) toks.size());
+    if (llama_decode(s->ctx, batch)) { LOGW("prompt decode failed"); return ""; }
 
-    // tokenize as raw continuation: add_special=true lets the model add BOS only if it needs it;
-    // parse_special=false so user text is never interpreted as control tokens (no chat template)
+    std::string out;
+    for (int i = 0; i < maxTokens; ++i) {
+        llama_token id = llama_sampler_sample(smpl, s->ctx, -1);
+        if (llama_vocab_is_eog(s->vocab, id)) break;
+        char buf[256];
+        int m = llama_token_to_piece(s->vocab, id, buf, sizeof(buf), 0, false);
+        if (m < 0) break;
+        std::string piece(buf, m);
+        if (piece.find('\n') != std::string::npos || piece.find('\r') != std::string::npos) break;
+        out += piece;
+        llama_batch step = llama_batch_get_one(&id, 1);
+        if (llama_decode(s->ctx, step)) break;
+    }
+    return out;
+}
+
+// Tokenize a prompt as raw continuation (no chat template) and left-truncate to fit n_ctx.
+static std::vector<llama_token> tokenize_prompt(Session* s, const std::string& prompt, int maxGen) {
     int n_max = (int) prompt.size() + 8;
     std::vector<llama_token> toks(n_max);
     int n = llama_tokenize(s->vocab, prompt.c_str(), (int32_t) prompt.size(),
                            toks.data(), n_max, /*add_special*/ true, /*parse_special*/ false);
     if (n < 0) { toks.resize(-n); n = llama_tokenize(s->vocab, prompt.c_str(), (int32_t) prompt.size(),
                            toks.data(), (int32_t) toks.size(), true, false); }
-    if (n <= 0) return env->NewStringUTF("");
+    if (n <= 0) return {};
     toks.resize(n);
-
-    // keep prompt + generation within n_ctx: left-truncate oldest tokens if needed
-    int budget = s->n_ctx - (maxTokens > 0 ? maxTokens : 12) - 1;
-    if (budget > 0 && (int) toks.size() > budget) {
+    int budget = s->n_ctx - maxGen - 1;
+    if (budget > 0 && (int) toks.size() > budget)
         toks.erase(toks.begin(), toks.begin() + (toks.size() - budget));
-    }
+    return toks;
+}
 
-    // decode the prompt; llama_batch_get_one sets logits on the last token for us
-    llama_batch batch = llama_batch_get_one(toks.data(), (int32_t) toks.size());
-    if (llama_decode(s->ctx, batch)) { LOGW("prompt decode failed"); return env->NewStringUTF(""); }
+jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens) {
+    Session* s = lookup((int64_t) handle);
+    if (!s) return env->NewStringUTF("");
+    const char* promptC = env->GetStringUTFChars(jprompt, nullptr);
+    std::string prompt = promptC ? promptC : "";
+    env->ReleaseStringUTFChars(jprompt, promptC);
+    if (prompt.empty()) return env->NewStringUTF("");
 
-    std::string out;
     const int limit = maxTokens > 0 ? maxTokens : 12;
-    for (int i = 0; i < limit; ++i) {
-        llama_token id = llama_sampler_sample(s->sampler, s->ctx, -1);
-        if (llama_vocab_is_eog(s->vocab, id)) break;
-        char buf[256];
-        int m = llama_token_to_piece(s->vocab, id, buf, sizeof(buf), 0, false);
-        if (m < 0) break;
-        std::string piece(buf, m);
-        // stop at a line break; word-count policy is applied on the Kotlin side
-        if (piece.find('\n') != std::string::npos || piece.find('\r') != std::string::npos) break;
-        out += piece;
-        llama_batch step = llama_batch_get_one(&id, 1);
-        if (llama_decode(s->ctx, step)) break;
-    }
+    std::vector<llama_token> toks = tokenize_prompt(s, prompt, limit);
+    if (toks.empty()) return env->NewStringUTF("");
+    llama_sampler* smpl = build_sampler(0.2f, LLAMA_DEFAULT_SEED);
+    std::string out = generate_one(s, toks, smpl, limit);
+    llama_sampler_free(smpl);
     return env->NewStringUTF(out.c_str());
+}
+
+// Generate [count] diverse short continuations, newline-separated. Candidate 0 uses a low
+// temperature (safe pick); the rest use a higher temperature with distinct seeds for variety.
+jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens, jint count) {
+    Session* s = lookup((int64_t) handle);
+    if (!s) return env->NewStringUTF("");
+    const char* promptC = env->GetStringUTFChars(jprompt, nullptr);
+    std::string prompt = promptC ? promptC : "";
+    env->ReleaseStringUTFChars(jprompt, promptC);
+    if (prompt.empty()) return env->NewStringUTF("");
+
+    const int limit = maxTokens > 0 ? maxTokens : 8;
+    const int n = count > 0 ? count : 3;
+    std::vector<llama_token> toks = tokenize_prompt(s, prompt, limit);
+    if (toks.empty()) return env->NewStringUTF("");
+
+    std::string result;
+    for (int i = 0; i < n; ++i) {
+        float temp = (i == 0) ? 0.3f : 0.7f;
+        llama_sampler* smpl = build_sampler(temp, (uint32_t) (1234 + i));
+        std::string cand = generate_one(s, toks, smpl, limit);
+        llama_sampler_free(smpl);
+        if (i > 0) result += "\n";
+        result += cand;
+    }
+    return env->NewStringUTF(result.c_str());
 }
 
 void nativeFree(JNIEnv*, jobject, jlong handle) {
@@ -151,9 +185,10 @@ void nativeFree(JNIEnv*, jobject, jlong handle) {
 }
 
 const JNINativeMethod kMethods[] = {
-    {"load",     "(Ljava/lang/String;II)J",                    (void*) nativeLoad},
-    {"generate", "(JLjava/lang/String;I)Ljava/lang/String;",   (void*) nativeGenerate},
-    {"free",     "(J)V",                                        (void*) nativeFree},
+    {"load",          "(Ljava/lang/String;II)J",                    (void*) nativeLoad},
+    {"generate",      "(JLjava/lang/String;I)Ljava/lang/String;",   (void*) nativeGenerate},
+    {"generateMulti", "(JLjava/lang/String;II)Ljava/lang/String;",  (void*) nativeGenerateMulti},
+    {"free",          "(J)V",                                        (void*) nativeFree},
 };
 
 } // namespace

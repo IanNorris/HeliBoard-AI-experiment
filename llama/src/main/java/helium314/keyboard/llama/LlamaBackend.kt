@@ -29,6 +29,14 @@ class LlamaBackend(
         return LlamaNative.generate(h, prompt, maxTokens)
     }
 
+    /** Generate [count] diverse short continuations for [prompt]. */
+    fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<String> {
+        val h = handle
+        if (h == 0L) return emptyList()
+        return LlamaNative.generateMulti(h, prompt, maxTokens, count)
+            .split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
     fun close() {
         val h = handle
         handle = 0L

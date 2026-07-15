@@ -22,6 +22,13 @@ interface InferenceBackend {
      */
     fun generate(prompt: String, maxTokens: Int): String
 
+    /**
+     * Generate up to [count] diverse short continuations of [prompt]. Backends that support cheap
+     * multi-sampling (llama.cpp) override this; the default falls back to a single generation.
+     */
+    fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<String> =
+        listOf(generate(prompt, maxTokens)).filter { it.isNotEmpty() }
+
     /** Release native resources. Safe to call repeatedly; a later [load] can re-init. */
     fun close()
 }
