@@ -33,6 +33,9 @@ class ModelRepository private constructor(context: Context) {
 
     fun deleteModel() { storage.deleteInstalled(model); storage.deletePart(model) }
 
+    /** Install the model from a user-picked file stream (used to sidestep gated downloads). */
+    fun importModel(input: java.io.InputStream) { storage.installFromStream(model, input) }
+
     companion object {
         @Volatile private var instance: ModelRepository? = null
         @JvmStatic

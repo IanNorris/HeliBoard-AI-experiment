@@ -55,6 +55,14 @@ class FileModelStorage(context: Context) : ModelStorage {
     override fun deletePart(model: ModelInfo) { partFile(model).delete() }
     override fun isInstalled(model: ModelInfo): Boolean = finalFile(model).isFile
     override fun deleteInstalled(model: ModelInfo) { finalFile(model).delete() }
+
+    /** Install a model from an arbitrary input stream (e.g. a user-picked file), atomically. */
+    fun installFromStream(model: ModelInfo, input: InputStream) {
+        val part = partFile(model)
+        part.delete()
+        input.use { source -> part.outputStream().use { out -> source.copyTo(out) } }
+        installFromPart(model)
+    }
 }
 
 /** Real HTTP(S) [ModelSource] with Range-resume support. */

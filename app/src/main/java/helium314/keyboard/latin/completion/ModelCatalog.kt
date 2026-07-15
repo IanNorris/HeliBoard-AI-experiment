@@ -43,12 +43,14 @@ object ModelCatalog {
         ModelInfo(
             id = "gemma3-1b-it-int4",
             displayName = "Gemma 3 1B (4-bit)",
-            // official host; the user accepts Google's license on the model page before download
-            url = "https://storage.googleapis.com/mediapipe-models/llm_inference/gemma3-1b-it-int4/gemma3-1b-it-int4.task",
-            sizeBytes = 0L, // TODO: fill exact byte size before shipping (verified on-device)
-            sha256 = "",    // TODO: fill SHA-256 before shipping; empty skips verification
+            // Official LiteRT community build. NOTE: this repo is GATED on Hugging Face — the user
+            // must accept Gemma's license there first, so a plain unauthenticated GET will not work.
+            // Options: import the downloaded .task via a file picker, or point at a non-gated mirror.
+            url = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task?download=true",
+            sizeBytes = 0L, // exact byte size TBD (empty = size check skipped)
+            sha256 = "",    // SHA-256 TBD (empty = integrity check skipped)
             license = "Gemma Terms of Use",
-            licenseUrl = "https://ai.google.dev/gemma/terms",
+            licenseUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT",
             minSdk = 24,
         ),
     )
