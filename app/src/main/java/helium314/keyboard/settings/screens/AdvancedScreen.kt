@@ -74,6 +74,8 @@ fun AdvancedSettingsScreen(
         Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD,
         if (prefs.getBoolean(Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD, Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD))
             Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_INTERVAL else null,
+        if (prefs.getBoolean(Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD, Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD))
+            Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_ACCELERATION else null,
         Settings.PREF_SPACE_TO_CHANGE_LANG,
         Settings.PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD,
         Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY,
@@ -172,6 +174,16 @@ fun createAdvancedSettings(context: Context) = listOf(
             default = Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_INTERVAL,
             range = 0f..500f,
             description = { stringResource(R.string.abbreviation_unit_milliseconds, it.toString()) }
+        )
+    },
+    Setting(context, Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_ACCELERATION,
+        R.string.longpress_backspace_delete_word_acceleration) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_ACCELERATION,
+            range = 0f..200f,
+            description = { if (it == 0) stringResource(R.string.action_none) else "${it}%" }
         )
     },
     Setting(context, Settings.PREF_SPACE_TO_CHANGE_LANG,

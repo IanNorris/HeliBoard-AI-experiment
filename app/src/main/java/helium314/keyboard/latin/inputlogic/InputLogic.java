@@ -83,6 +83,8 @@ public final class InputLogic {
     private static final String TAG = InputLogic.class.getSimpleName();
     private static final char INLINE_EMOJI_SEARCH_MARKER = ':';
     private static final int[] EMPTY_CODE_POINTS = new int[0];
+    // smallest effective interval (ms) between accelerated held-backspace word deletions
+    private static final int MIN_WORD_DELETE_INTERVAL_MS = 20;
 
     // TODO : Remove this member when we can.
     final LatinIME mLatinIME;
@@ -114,6 +116,8 @@ public final class InputLogic {
     private long mLastKeyTime;
     // uptime of the last long-press word deletion, used to throttle how fast held backspace removes words
     private long mLastWordDeleteTime;
+    // number of consecutive word deletions in the current backspace hold, used for acceleration
+    private int mWordDeleteCount;
     // todo: this is not used, so either remove it or do something with it
     public final TreeSet<Long> mCurrentlyPressedHardwareKeys = new TreeSet<>();
 
@@ -171,6 +175,7 @@ public final class InputLogic {
         mWordComposer.restartCombining(combiningSpec);
         resetComposingState(true /* alsoResetLastComposedWord */);
         mDeleteCount = 0;
+        mWordDeleteCount = 0;
         mSpaceState = SpaceState.NONE;
         mRecapitalizeStatus.disable(); // Do not perform recapitalize until the cursor is moved once
         mCurrentlyPressedHardwareKeys.clear();
@@ -484,6 +489,7 @@ public final class InputLogic {
         if (processedEvent.getKeyCode() != KeyCode.DELETE
                 || inputTransaction.getTimestamp() > mLastKeyTime + Constants.LONG_PRESS_MILLISECONDS) {
             mDeleteCount = 0;
+            mWordDeleteCount = 0;
         }
         mLastKeyTime = inputTransaction.getTimestamp();
         mConnection.beginBatchEdit();
@@ -1260,17 +1266,27 @@ public final class InputLogic {
         inputTransaction.requireShiftUpdate(shiftUpdateKind);
 
         // Throttle held-backspace word deletion so it does not run away at the key-repeat rate.
-        // When enabled and this is a key repeat, only allow a word deletion once per configured
-        // interval; earlier repeats are consumed without deleting anything.
+        // When enabled and this is a key repeat, only allow a word deletion once per (accelerated)
+        // interval; earlier repeats are consumed without deleting anything. The effective interval
+        // shrinks as more words are deleted in one hold, so clearing a long run speeds up.
         if (event.isKeyRepeat()
                 && inputTransaction.getSettingsValues().mLongpressBackspaceDeleteWord
                 && !mConnection.hasSelection()) {
-            final int interval = inputTransaction.getSettingsValues().mLongpressBackspaceDeleteWordInterval;
-            final long now = SystemClock.uptimeMillis();
-            if (interval > 0 && now - mLastWordDeleteTime < interval) {
-                return;
+            final SettingsValues sv = inputTransaction.getSettingsValues();
+            final int baseInterval = sv.mLongpressBackspaceDeleteWordInterval;
+            if (baseInterval > 0) {
+                // acceleration: divide the interval by (1 + accel * wordsDeleted), floored so it can
+                // never become instant. accel is a fraction (0 = off).
+                final float accel = sv.mLongpressBackspaceDeleteWordAcceleration / 100f;
+                final int effectiveInterval = Math.max(MIN_WORD_DELETE_INTERVAL_MS,
+                        Math.round(baseInterval / (1f + accel * mWordDeleteCount)));
+                final long now = SystemClock.uptimeMillis();
+                if (now - mLastWordDeleteTime < effectiveInterval) {
+                    return;
+                }
+                mLastWordDeleteTime = now;
             }
-            mLastWordDeleteTime = now;
+            mWordDeleteCount++;
         }
 
         if (mWordComposer.isCursorFrontOrMiddleOfComposingWord()) {

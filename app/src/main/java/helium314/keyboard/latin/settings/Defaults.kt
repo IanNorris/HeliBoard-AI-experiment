@@ -69,6 +69,8 @@ object Defaults {
     const val PREF_LONGPRESS_BACKSPACE_DELETE_WORD = false
     // minimum time in ms between successive word deletions while holding backspace; 0 = as fast as key repeat
     const val PREF_LONGPRESS_BACKSPACE_DELETE_WORD_INTERVAL = 150
+    // acceleration percent: effective interval is divided by (1 + accel/100 * wordsDeleted); 0 = no acceleration
+    const val PREF_LONGPRESS_BACKSPACE_DELETE_WORD_ACCELERATION = 50
     const val PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION = true
     const val PREF_CENTER_SUGGESTION_TEXT_TO_ENTER = false
     const val PREF_SHOW_SUGGESTIONS = true
