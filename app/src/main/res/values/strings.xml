@@ -256,6 +256,16 @@
     <string name="button_backup">Backup</string>
     <!-- restore button -->
     <string name="button_restore">Restore</string>
+    <!-- Title of the dialog asking what to include in a backup -->
+    <string name="backup_scope_title">What to back up</string>
+    <!-- Option: back up only settings (shareable, no personal data) -->
+    <string name="backup_scope_settings_only">Settings only</string>
+    <!-- Summary for the settings-only backup option -->
+    <string name="backup_scope_settings_only_summary">Configuration, layouts and themes. Safe to share \u2014 excludes your dictionary, learned words and clipboard.</string>
+    <!-- Option: back up settings and personal data -->
+    <string name="backup_scope_full">Settings &amp; personal dictionary</string>
+    <!-- Summary for the full backup option -->
+    <string name="backup_scope_full_summary">Everything, including your learned words, personal dictionary and clipboard. Sensitive \u2014 do not share.</string>
     <!-- Message when backup is restored successfully -->
     <string name="backup_restored">Backup restored</string>
     <!-- Preferences item for format for timestamp keycode -->

@@ -7,14 +7,24 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.result.ActivityResult
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import helium314.keyboard.dictionarypack.DictionaryPackConstants
 import helium314.keyboard.keyboard.KeyboardSwitcher
 import helium314.keyboard.keyboard.emoji.SupportedEmojis
@@ -53,9 +63,11 @@ import helium314.keyboard.latin.transferOldPinnedClips
 @Composable
 fun BackupRestorePreference(setting: Setting) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
+    var showScopeDialog by rememberSaveable { mutableStateOf(false) }
+    var backupScope by rememberSaveable { mutableStateOf(BackupScope.SETTINGS_ONLY) }
     val ctx = LocalContext.current
     var error: String? by rememberSaveable { mutableStateOf(null) }
-    val backupLauncher = backupLauncher { error = it }
+    val backupLauncher = backupLauncher(scope = { backupScope }) { error = it }
     val restoreLauncher = restoreLauncher { error = it }
     Preference(name = setting.title, onClick = { showDialog = true })
     if (showDialog) {
@@ -73,13 +85,26 @@ fun BackupRestorePreference(setting: Setting) {
                 restoreLauncher.launch(intent)
             },
             onConfirmed = {
+                // ask what to include before choosing where to save
+                showScopeDialog = true
+            }
+        )
+    }
+    if (showScopeDialog) {
+        BackupScopeDialog(
+            selected = backupScope,
+            onSelect = { backupScope = it },
+            onDismissRequest = { showScopeDialog = false },
+            onConfirmed = {
+                showScopeDialog = false
                 val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time)
+                val suffix = if (backupScope == BackupScope.SETTINGS_ONLY) "settings" else "full"
                 val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .putExtra(
                         Intent.EXTRA_TITLE,
                         ctx.getString(R.string.english_ime_name)
-                            .replace(" ", "_") + "_backup_$currentDate.zip"
+                            .replace(" ", "_") + "_${suffix}_backup_$currentDate.zip"
                     )
                     .setType("application/zip")
                 backupLauncher.launch(intent)
@@ -95,18 +120,66 @@ fun BackupRestorePreference(setting: Setting) {
     }
 }
 
+/** Radio picker letting the user choose a shareable settings-only backup or a full (sensitive) one. */
 @Composable
-private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
+private fun BackupScopeDialog(
+    selected: BackupScope,
+    onSelect: (BackupScope) -> Unit,
+    onDismissRequest: () -> Unit,
+    onConfirmed: () -> Unit,
+) {
+    ConfirmationDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(stringResource(R.string.backup_scope_title)) },
+        confirmButtonText = stringResource(R.string.button_backup),
+        onConfirmed = onConfirmed,
+        content = {
+            Column {
+                BackupScopeOption(
+                    label = stringResource(R.string.backup_scope_settings_only),
+                    description = stringResource(R.string.backup_scope_settings_only_summary),
+                    selected = selected == BackupScope.SETTINGS_ONLY,
+                    onClick = { onSelect(BackupScope.SETTINGS_ONLY) },
+                )
+                BackupScopeOption(
+                    label = stringResource(R.string.backup_scope_full),
+                    description = stringResource(R.string.backup_scope_full_summary),
+                    selected = selected == BackupScope.FULL,
+                    onClick = { onSelect(BackupScope.FULL) },
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun BackupScopeOption(label: String, description: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp),
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Column(Modifier.padding(start = 8.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun backupLauncher(scope: () -> BackupScope, onError: (String) -> Unit): ManagedActivityResultLauncher<Intent, ActivityResult> {
     val ctx = LocalContext.current
     return filePicker { uri ->
-        // zip all files matching the backup patterns
-        // essentially this is the typed words information, and user-added dictionaries
+        val backupScope = scope()
+        val patterns = filePatternsFor(backupScope)
+        // zip all files matching the patterns for the chosen scope (settings-only excludes the typed
+        // words / learned dictionary / clipboard; full includes them)
         val filesDir = ctx.filesDir ?: return@filePicker
         val filesPath = filesDir.path + File.separator
         val files = mutableListOf<File>()
         filesDir.walk().forEach { file ->
             val path = file.path.replace(filesPath, "")
-            if (file.isFile && backupFilePatterns.any { path.matches(it) })
+            if (file.isFile && patterns.any { path.matches(it) })
                 files.add(file)
         }
         val protectedFilesDir = DeviceProtectedUtils.getFilesDir(ctx)
@@ -114,7 +187,7 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
         val protectedFiles = mutableListOf<File>()
         protectedFilesDir.walk().forEach { file ->
             val path = file.path.replace(protectedFilesPath, "")
-            if (file.isFile && backupFilePatterns.any { path.matches(it) })
+            if (file.isFile && patterns.any { path.matches(it) })
                 protectedFiles.add(file)
         }
         val wait = CountDownLatch(1)
@@ -137,8 +210,9 @@ private fun backupLauncher(onError: (String) -> Unit): ManagedActivityResultLaun
                         fileStream.close()
                         zipStream.closeEntry()
                     }
+                    // the database holds clipboard history (sensitive) - only in a full backup
                     val dbFile = ctx.getDatabasePath(Database.NAME)
-                    if (dbFile.exists()) {
+                    if (backupScope == BackupScope.FULL && dbFile.exists()) {
                         val fileStream = FileInputStream(dbFile).buffered()
                         zipStream.putNextEntry(ZipEntry(Database.NAME))
                         fileStream.copyTo(zipStream, 1024)
@@ -340,13 +414,28 @@ private fun restoreEntryToDir(zip: ZipInputStream, baseDir: File, entryName: Str
 private const val PREFS_FILE_NAME = "preferences.json"
 private const val PROTECTED_PREFS_FILE_NAME = "protected_preferences.json"
 
-private val backupFilePatterns by lazy { listOf(
+/** What a backup should contain. */
+enum class BackupScope { SETTINGS_ONLY, FULL }
+
+// Configuration and custom visual/layout assets: safe to share with others (no typed-word data).
+private val configFilePatterns by lazy { listOf(
     "blacklists${File.separator}.*\\.txt".toRegex(),
     "layouts${File.separator}.*${LayoutUtilsCustom.CUSTOM_LAYOUT_PREFIX}+\\..{0,4}".toRegex(), // can't expect a period at the end, as this would break restoring older backups
-    "dicts${File.separator}.*${File.separator}.*user\\.dict".toRegex(),
-    "UserHistoryDictionary.*${File.separator}UserHistoryDictionary.*\\.(body|header)".toRegex(),
     "custom_background_image.*".toRegex(),
     "custom_font".toRegex(),
     "custom_emoji_font".toRegex(),
+) }
+
+// Personal / sensitive data derived from what the user typed: their added words, the learned
+// (n-gram) history, and clipboard content. Excluded from a "settings only" (shareable) backup.
+private val personalFilePatterns by lazy { listOf(
+    "dicts${File.separator}.*${File.separator}.*user\\.dict".toRegex(),
+    "UserHistoryDictionary.*${File.separator}UserHistoryDictionary.*\\.(body|header)".toRegex(),
     "clipboard/.*".toRegex(),
 ) }
+
+private val backupFilePatterns by lazy { configFilePatterns + personalFilePatterns }
+
+/** The file patterns to include for a given [scope]. */
+private fun filePatternsFor(scope: BackupScope): List<Regex> =
+    if (scope == BackupScope.FULL) backupFilePatterns else configFilePatterns
