@@ -21,7 +21,7 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference.LlmInferenceOp
  * model creation and generation are both blocking and can take hundreds of ms to seconds.
  */
 @RequiresApi(24)
-class MediaPipeInferenceBackend(
+class MediaPipeInferenceBackend @JvmOverloads constructor(
     private val context: Context,
     private val maxTokens: Int = 64,
     private val topK: Int = 40,

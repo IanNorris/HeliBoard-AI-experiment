@@ -141,9 +141,10 @@ public class LatinIME extends InputMethodService implements
     private InsetsOutlineProvider mInsetsUpdater;
     private SuggestionStripView mSuggestionStripView;
     private helium314.keyboard.latin.completion.CompletionStripView mCompletionStripView;
-    private final helium314.keyboard.latin.completion.CompletionEngine mCompletionEngine =
-            new helium314.keyboard.latin.completion.CompletionEngine(
-                    new helium314.keyboard.latin.completion.StubCompletionProvider());
+    private helium314.keyboard.latin.completion.CompletionEngine mCompletionEngine;
+    private helium314.keyboard.latin.completion.ModelCompletionProvider mModelCompletionProvider;
+    private java.util.concurrent.ExecutorService mCompletionExecutor;
+    private volatile boolean mCompletionGenerating = false;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -555,6 +556,7 @@ public class LatinIME extends InputMethodService implements
         loadSettings();
         mClipboardHistoryManager.onCreate();
         mHandler.onCreate();
+        initCompletionEngine();
         if (FoldableUtils.INSTANCE.isFoldable())
             foldableObserver = new FoldableUtils.FoldableObserver(this);
 
@@ -708,6 +710,8 @@ public class LatinIME extends InputMethodService implements
         mStatsUtilsManager.onDestroy(this /* context */);
         super.onDestroy();
         mHandler.removeCallbacksAndMessages(null);
+        if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
+        if (mCompletionExecutor != null) mCompletionExecutor.shutdownNow();
         deallocateMemory();
     }
 
@@ -805,7 +809,7 @@ public class LatinIME extends InputMethodService implements
         mStatsUtilsManager.onFinishInputView();
         mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
         BackgroundGatheringCache.saveOrClear(this);
-        mCompletionEngine.invalidate();
+        if (mCompletionEngine != null) mCompletionEngine.invalidate();
         if (mCompletionStripView != null) {
             mCompletionStripView.clear();
             mCompletionStripView.setVisibility(View.GONE);
@@ -1529,16 +1533,44 @@ public class LatinIME extends InputMethodService implements
     }
 
     /**
-     * Slice 1a of the multi-word completion feature: render (only) stub completions in the strip
-     * above the suggestions. This performs no text mutation; tap-to-accept is added separately.
-     * The strip is hidden unless the experimental setting is on and a soft suggestion strip exists.
+     * Build the completion engine and its worker thread. Uses the on-device model provider when the
+     * device supports it and a model is installed; otherwise the stub provider (which also serves as
+     * a transparent fallback while the model is absent or loading).
+     */
+    private void initCompletionEngine() {
+        final helium314.keyboard.latin.completion.ModelRepository repo =
+                helium314.keyboard.latin.completion.ModelRepository.get(this);
+        helium314.keyboard.latin.completion.CompletionProvider provider =
+                new helium314.keyboard.latin.completion.StubCompletionProvider();
+        if (repo.isDeviceSupported()) {
+            try {
+                final helium314.keyboard.latin.completion.InferenceBackend backend =
+                        new helium314.keyboard.latin.completion.MediaPipeInferenceBackend(this);
+                mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
+                        backend, repo::installedModelPath);
+                provider = mModelCompletionProvider;
+            } catch (Throwable t) {
+                // if the MediaPipe runtime is unavailable for any reason, fall back to the stub
+                Log.w(TAG, "on-device model backend unavailable, using stub completions", t);
+            }
+        }
+        mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider);
+        mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    }
+
+    /**
+     * Update the multi-word completion strip. The fast prefix-filter runs synchronously on the UI
+     * thread (cheap, no model call); a fresh generation is dispatched to a background worker and its
+     * result swapped in later only if the context is still valid (epoch unchanged), so slow on-device
+     * inference never blocks typing.
      */
     private void updateCompletionStrip(final SettingsValues settingsValues) {
-        if (mCompletionStripView == null) return;
+        if (mCompletionStripView == null || mCompletionEngine == null) return;
         final boolean eligible = settingsValues.mMultiwordCompletionEnabled
                 && hasSuggestionStripView()
                 && onEvaluateInputViewShown()
-                && !isFullscreenMode();
+                && !isFullscreenMode()
+                && !settingsValues.mIncognitoModeEnabled; // never generate in password/incognito/no-learning fields
         if (!eligible) {
             mCompletionEngine.invalidate();
             mCompletionStripView.clear();
@@ -1563,12 +1595,33 @@ public class LatinIME extends InputMethodService implements
         if (!prefix.isEmpty() && leftContext.endsWith(prefix)) {
             leftContext = leftContext.substring(0, leftContext.length() - prefix.length());
         }
-        java.util.List<helium314.keyboard.latin.completion.CompletionCandidate> candidates =
+        // fast path: filter the existing pool by prefix without any model call
+        final java.util.List<helium314.keyboard.latin.completion.CompletionCandidate> filtered =
                 mCompletionEngine.onPrefixChanged(leftContext, prefix);
-        if (candidates == null) {
-            candidates = mCompletionEngine.regenerate(leftContext, prefix).getCandidates();
+        if (filtered != null) {
+            mCompletionStripView.setCandidates(filtered, prefix);
+            return;
         }
-        mCompletionStripView.setCandidates(candidates, prefix);
+        // slow path: regenerate off the UI thread; swap in only if still valid when it returns
+        final String genContext = leftContext;
+        final String genPrefix = prefix;
+        final int epochAtDispatch = mCompletionEngine.getCurrentEpoch();
+        if (mCompletionGenerating) return; // one in-flight generation at a time
+        mCompletionGenerating = true;
+        mCompletionExecutor.execute(() -> {
+            final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result;
+            try {
+                result = mCompletionEngine.regenerate(genContext, genPrefix);
+            } finally {
+                mCompletionGenerating = false;
+            }
+            mHandler.post(() -> {
+                if (mCompletionStripView == null) return;
+                // drop stale results: context changed (cursor move, commit, focus) since dispatch
+                if (mCompletionEngine.getCurrentEpoch() != epochAtDispatch) return;
+                mCompletionStripView.setCandidates(result.getCandidates(), genPrefix);
+            });
+        });
     }
 
     /**
@@ -1648,7 +1701,7 @@ public class LatinIME extends InputMethodService implements
             if (hasSuggestionStripView() && currentSettings.mAutoHideToolbar)
                 mSuggestionStripView.setToolbarVisibility(false);
             if (mCompletionStripView != null) {
-                mCompletionEngine.invalidate();
+                if (mCompletionEngine != null) mCompletionEngine.invalidate();
                 mCompletionStripView.clear();
                 mCompletionStripView.setVisibility(View.GONE);
             }
@@ -1938,6 +1991,9 @@ public class LatinIME extends InputMethodService implements
             case TRIM_MEMORY_RUNNING_LOW, TRIM_MEMORY_RUNNING_CRITICAL, TRIM_MEMORY_COMPLETE -> {
                 KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
                 mKeyboardSwitcher.trimMemory();
+                // free the on-device model under memory pressure; it reloads lazily when next needed
+                if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
+                if (mCompletionEngine != null) mCompletionEngine.invalidate();
             }
             // deallocateMemory always called on hiding, and should not be called when showing
         }

@@ -31,6 +31,7 @@ class CompletionEngine @JvmOverloads constructor(
     val currentEpoch: Int get() = epoch.get()
 
     /** Candidates from the current pool whose first word matches [prefix], capped at [maxCandidates]. */
+    @Synchronized
     fun visibleCandidates(prefix: String): List<CompletionCandidate> =
         pool.asSequence().filter { it.matchesPrefix(prefix) }.take(maxCandidates).toList()
 
@@ -41,7 +42,9 @@ class CompletionEngine @JvmOverloads constructor(
      * the current prefix any more.
      */
     fun onPrefixChanged(leftContext: String, prefix: String): List<CompletionCandidate>? {
-        if (leftContext != poolContext) return null
+        synchronized(this) {
+            if (leftContext != poolContext) return null
+        }
         val filtered = visibleCandidates(prefix)
         return filtered.ifEmpty { null }
     }
@@ -54,10 +57,13 @@ class CompletionEngine @JvmOverloads constructor(
      */
     fun regenerate(leftContext: String, prefix: String): GenerationResult {
         val startEpoch = epoch.get()
+        // run the (potentially slow) provider OUTSIDE the lock so the fast path isn't blocked
         val generated = provider.generate(CompletionContext(leftContext, prefix), poolSize)
-        if (epoch.get() == startEpoch) {
-            pool = generated
-            poolContext = leftContext
+        synchronized(this) {
+            if (epoch.get() == startEpoch) {
+                pool = generated
+                poolContext = leftContext
+            }
         }
         return GenerationResult(startEpoch, visibleCandidates(prefix))
     }
@@ -73,6 +79,7 @@ class CompletionEngine @JvmOverloads constructor(
     }
 
     /** Drop the pool and outstanding async work (e.g. on cursor jump, commit, or focus change). */
+    @Synchronized
     fun invalidate() {
         epoch.incrementAndGet()
         pool = emptyList()

@@ -17,18 +17,23 @@ package helium314.keyboard.latin.completion
  * The concrete model is never loaded on API < the backend's requirement; the host gates the whole
  * feature before constructing this, and [modelPathProvider] returns null until a model is installed.
  */
-class ModelCompletionProvider(
+class ModelCompletionProvider @JvmOverloads constructor(
     private val backend: InferenceBackend,
-    private val modelPathProvider: () -> String?,
+    private val modelPathProvider: ModelPathProvider,
     private val maxTokens: Int = 12,
 ) : CompletionProvider {
+
+    /** Supplies the installed model path (or null if absent). A SAM type so Java can pass a method ref. */
+    fun interface ModelPathProvider {
+        fun getPath(): String?
+    }
 
     override val name: String get() = "on-device-model"
 
     @Volatile private var loadFailed = false
 
     /** Whether a model is installed and the backend is ready (or can be made ready). */
-    fun isModelAvailable(): Boolean = modelPathProvider() != null && !loadFailed
+    fun isModelAvailable(): Boolean = modelPathProvider.getPath() != null && !loadFailed
 
     override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
         val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
@@ -48,7 +53,7 @@ class ModelCompletionProvider(
     private fun ensureLoaded(): Boolean {
         if (backend.isLoaded) return true
         if (loadFailed) return false
-        val path = modelPathProvider() ?: return false
+        val path = modelPathProvider.getPath() ?: return false
         return try {
             backend.load(path)
             backend.isLoaded
