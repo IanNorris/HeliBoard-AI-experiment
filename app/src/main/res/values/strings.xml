@@ -120,6 +120,10 @@
     <string name="prefs_show_suggestions">Show correction suggestions</string>
     <!-- Description for show suggestions -->
     <string name="prefs_show_suggestions_summary">Display suggested words while typing</string>
+    <!-- Title of the (experimental) multi-word AI completion feature. -->
+    <string name="prefs_multiword_completion">Multi-word completion (experimental)</string>
+    <!-- Description for the multi-word completion feature. -->
+    <string name="prefs_multiword_completion_summary">Show a separate strip of multi-word continuations above the suggestions, and tap any word to accept up to it</string>
     <!-- Option to override app flag to not show suggestions -->
     <string name="prefs_always_show_suggestions">Always show suggestions</string>
     <!-- Description for override app flag to not show suggestions -->

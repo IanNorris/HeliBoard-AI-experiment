@@ -78,6 +78,7 @@ fun TextCorrectionScreen(
         Settings.PREF_SHIFT_REMOVES_AUTOSPACE,
         R.string.settings_category_suggestions,
         if (suggestionsVisible) Settings.PREF_SHOW_SUGGESTIONS else null,
+        Settings.PREF_ENABLE_MULTIWORD_COMPLETION,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled && prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS))
             Settings.PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT else null,
@@ -186,6 +187,11 @@ fun createCorrectionSettings(context: Context) = listOf(
         R.string.prefs_show_suggestions, R.string.prefs_show_suggestions_summary
     ) {
         SwitchPreference(it, Defaults.PREF_SHOW_SUGGESTIONS)
+    },
+    Setting(context, Settings.PREF_ENABLE_MULTIWORD_COMPLETION,
+        R.string.prefs_multiword_completion, R.string.prefs_multiword_completion_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
     },
     Setting(context, Settings.PREF_ALWAYS_SHOW_SUGGESTIONS,
         R.string.prefs_always_show_suggestions, R.string.prefs_always_show_suggestions_summary
