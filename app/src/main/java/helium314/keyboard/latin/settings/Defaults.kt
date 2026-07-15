@@ -65,6 +65,7 @@ object Defaults {
     const val PREF_MORE_AUTO_CORRECTION = false
     const val PREF_AUTO_CORRECT_CONFIDENCE = 0.24f
     const val PREF_AUTOCORRECT_SHORTCUTS = true
+    const val PREF_KEEP_VALID_TYPED_WORD = false
     const val PREF_BACKSPACE_REVERTS_AUTOCORRECT = true
     const val PREF_LONGPRESS_BACKSPACE_DELETE_WORD = false
     // minimum time in ms between successive word deletions while holding backspace; 0 = as fast as key repeat

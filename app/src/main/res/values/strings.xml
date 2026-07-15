@@ -152,6 +152,10 @@
     <string name="auto_correct_capitalized_suggestions_description">After pressing shift to capitalize suggestions, auto-correct will trigger</string>
     <!-- Option to undo auto correction with backspace -->
     <string name="backspace_reverts_autocorrect">Backspace reverts autocorrect</string>
+    <!-- Title of the option to never auto-correct words that are already in the dictionary. -->
+    <string name="keep_valid_typed_word">Keep valid typed words</string>
+    <!-- Description for "keep_valid_typed_word" option. -->
+    <string name="keep_valid_typed_word_summary">Never auto-correct a word that is already in the dictionary, so only genuine typos are corrected and the word you typed stays in the center</string>
     <!-- Option to disable auto correction. -->
     <string name="auto_correction_threshold_mode_off">Off</string> <!-- todo: use it or remove it -->
     <!-- Option to suggest auto correction suggestions modestly. Auto-corrects only to a word which has small edit distance from typed word. -->

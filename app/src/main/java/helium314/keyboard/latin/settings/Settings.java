@@ -80,6 +80,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_MORE_AUTO_CORRECTION = "more_auto_correction";
     public static final String PREF_AUTO_CORRECT_CONFIDENCE = "auto_correct_confidence";
     public static final String PREF_AUTOCORRECT_SHORTCUTS = "autocorrect_shortcuts";
+    public static final String PREF_KEEP_VALID_TYPED_WORD = "keep_valid_typed_word";
     public static final String PREF_BACKSPACE_REVERTS_AUTOCORRECT = "backspace_reverts_autocorrect";
     public static final String PREF_LONGPRESS_BACKSPACE_DELETE_WORD = "longpress_backspace_delete_word";
     public static final String PREF_LONGPRESS_BACKSPACE_DELETE_WORD_INTERVAL = "longpress_backspace_delete_word_interval";

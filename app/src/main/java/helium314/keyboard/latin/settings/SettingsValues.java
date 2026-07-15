@@ -155,6 +155,7 @@ public class SettingsValues {
     public final int mLongpressBackspaceDeleteWordInterval;
     public final int mLongpressBackspaceDeleteWordAcceleration;
     public final boolean mAutoCorrectShortcuts;
+    public final boolean mKeepValidTypedWord;
     public final boolean mSuggestionsEnabled;
     private final boolean mOverrideShowingSuggestions;
     public final boolean mSuggestClipboardContent;
@@ -235,6 +236,7 @@ public class SettingsValues {
         mScoreLimitForAutocorrect = (int)((1.14 - 0.2 * Math.pow(autoCorrectConfidence + 0.47, 3.5)) * 900000);
         mAutoCorrectCapitalizedSuggestion = prefs.getBoolean(Settings.PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION, Defaults.PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION);
         mAutoCorrectShortcuts = prefs.getBoolean(Settings.PREF_AUTOCORRECT_SHORTCUTS, Defaults.PREF_AUTOCORRECT_SHORTCUTS);
+        mKeepValidTypedWord = prefs.getBoolean(Settings.PREF_KEEP_VALID_TYPED_WORD, Defaults.PREF_KEEP_VALID_TYPED_WORD);
         mBackspaceRevertsAutocorrect = prefs.getBoolean(Settings.PREF_BACKSPACE_REVERTS_AUTOCORRECT, Defaults.PREF_BACKSPACE_REVERTS_AUTOCORRECT);
         mLongpressBackspaceDeleteWord = prefs.getBoolean(Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD, Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD);
         mLongpressBackspaceDeleteWordInterval = prefs.getInt(Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_INTERVAL, Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD_INTERVAL);
