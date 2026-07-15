@@ -31,12 +31,33 @@ android {
         buildConfigField("boolean", "HAS_LLAMA", enableLlama.toString())
     }
 
+    // Optional release signing: if a keystore is provided via env vars (RELEASE_KEYSTORE etc., set by
+    // the release CI workflow from repository secrets) a real "release" signing config is created;
+    // otherwise release builds fall back to the debug key so they still assemble locally. This keeps
+    // the experimental fork buildable with zero setup while allowing a real key when secrets exist.
+    signingConfigs {
+        val ksPath = System.getenv("RELEASE_KEYSTORE") ?: (project.findProperty("RELEASE_KEYSTORE") as String?)
+        if (ksPath != null && File(ksPath).exists()) {
+            create("release") {
+                storeFile = File(ksPath)
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                    ?: (project.findProperty("RELEASE_KEYSTORE_PASSWORD") as String? ?: "")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                    ?: (project.findProperty("RELEASE_KEY_ALIAS") as String? ?: "")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+                    ?: (project.findProperty("RELEASE_KEY_PASSWORD") as String? ?: "")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = false
             isDebuggable = false
             isJniDebuggable = false
+            // real release key when provided (CI secrets), else debug key so it still builds
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
         create("nouserlib") { // same as release, but does not allow the user to provide a library
             isMinifyEnabled = true
