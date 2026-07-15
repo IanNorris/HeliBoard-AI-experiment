@@ -42,45 +42,46 @@ class ModelCompletionProvider @JvmOverloads constructor(
 
     override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
         val partial = context.currentWordPrefix
-
-        // Mid-word anchoring: if the dictionary has a completion for the fragment (e.g. "ti"->"time"),
-        // prompt the model with the COMPLETED word ("What time") and prepend that word to the result.
-        val anchorWord = context.dictionaryWord.takeIf {
-            it.isNotEmpty() && it.startsWith(partial, ignoreCase = true) && it.length > partial.length
-        }
-        val basePrompt = when {
-            partial.isEmpty() -> context.leftContext
-            anchorWord != null -> context.leftContext + anchorWord
-            else -> context.leftContext + partial
-        }
-        val prompt = PromptBuilder.build(basePrompt) ?: return emptyList()
+        // nothing to work with (no committed context and no in-progress word) -> don't even load
+        if (context.leftContext.isBlank() && partial.isEmpty()) return emptyList()
         if (!ensureLoaded()) return emptyList()
 
-        // Generate several diverse SHORT continuations and show them as distinct options (rather than
-        // one long phrase truncated to different lengths). Each is capped to a few words for keyboard
-        // usefulness; tap-to-accept then extends from the new context.
-        val raws = try {
-            backend.generateMulti(prompt, maxTokens, OVERSAMPLE)
-        } catch (e: Exception) {
-            return emptyList()
+        // Whole-word mode (just typed a space): generate several diverse short continuations.
+        if (partial.isEmpty()) {
+            val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
+            val raws = try { backend.generateMulti(prompt, maxTokens, OVERSAMPLE) }
+                catch (e: Exception) { return emptyList() }
+            val candidates = raws.mapNotNull { ResponseParser.parse(it, promptEcho = prompt, maxWords = MAX_WORDS) }
+            return dedupeDistinct(candidates, max)
         }
 
-        val candidates = ArrayList<CompletionCandidate>()
-        for (raw in raws) {
-            val cand = when {
-                partial.isEmpty() ->
-                    ResponseParser.parse(raw, promptEcho = prompt, maxWords = MAX_WORDS)
-                anchorWord != null -> {
-                    val c = ResponseParser.parse("$anchorWord ${raw.trimStart()}", maxWords = MAX_WORDS)
-                    c?.takeIf { it.firstWord.equals(anchorWord, ignoreCase = true) }
-                }
-                else -> {
-                    if (raw.isEmpty() || raw[0].isWhitespace()) null
-                    else ResponseParser.parse(partial + raw, maxWords = MAX_WORDS)
-                        ?.takeIf { it.firstWord.startsWith(partial, ignoreCase = true) }
-                }
-            } ?: continue
-            candidates.add(cand)
+        // Mid-word: anchor on the dictionary's top completions of the fragment (e.g. "ti" ->
+        // "time"/"timer"/"timing"), completing the current word reliably, then let the model
+        // continue each. This makes current-word prediction work where the small model alone can't.
+        val anchors = context.dictionaryWords
+            .filter { it.startsWith(partial, ignoreCase = true) && it.length > partial.length }
+            .take(max)
+        if (anchors.isNotEmpty()) {
+            val candidates = ArrayList<CompletionCandidate>()
+            for (word in anchors) {
+                val prompt = PromptBuilder.build(context.leftContext + word) ?: continue
+                val raw = try { backend.generate(prompt, maxTokens) } catch (e: Exception) { "" }
+                val text = if (raw.isBlank()) word else "$word ${raw.trimStart()}"
+                val cand = ResponseParser.parse(text, maxWords = MAX_WORDS)
+                    ?.takeIf { it.firstWord.equals(word, ignoreCase = true) }
+                if (cand != null) candidates.add(cand)
+            }
+            if (candidates.isNotEmpty()) return dedupeDistinct(candidates, max)
+        }
+
+        // No dictionary completion available: best-effort raw-fragment continuation.
+        val prompt = PromptBuilder.build(context.leftContext + partial) ?: return emptyList()
+        val raws = try { backend.generateMulti(prompt, maxTokens, OVERSAMPLE) }
+            catch (e: Exception) { return emptyList() }
+        val candidates = raws.mapNotNull { raw ->
+            if (raw.isEmpty() || raw[0].isWhitespace()) null
+            else ResponseParser.parse(partial + raw, maxWords = MAX_WORDS)
+                ?.takeIf { it.firstWord.startsWith(partial, ignoreCase = true) }
         }
         return dedupeDistinct(candidates, max)
     }

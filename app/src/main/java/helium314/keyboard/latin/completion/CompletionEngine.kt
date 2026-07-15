@@ -61,10 +61,10 @@ class CompletionEngine @JvmOverloads constructor(
      * returns, the context was invalidated meanwhile and the caller should discard the result
      * instead of displaying it.
      */
-    fun regenerate(leftContext: String, prefix: String, dictionaryWord: String = ""): GenerationResult {
+    fun regenerate(leftContext: String, prefix: String, dictionaryWords: List<String> = emptyList()): GenerationResult {
         val startEpoch = epoch.get()
         // run the (potentially slow) provider OUTSIDE the lock so the fast path isn't blocked
-        val generated = provider.generate(CompletionContext(leftContext, prefix, dictionaryWord), poolSize)
+        val generated = provider.generate(CompletionContext(leftContext, prefix, dictionaryWords), poolSize)
         synchronized(this) {
             if (epoch.get() == startEpoch) {
                 pool = generated

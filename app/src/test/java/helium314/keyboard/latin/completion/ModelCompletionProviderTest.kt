@@ -46,7 +46,7 @@ class ModelCompletionProviderTest {
         // dictionary says "ti" -> "time"; model continues "What time" with "is it"
         val backend = FakeBackend(output = " is it")
         val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
-        val result = provider.generate(CompletionContext("What ", "ti", dictionaryWord = "time"), max = 3)
+        val result = provider.generate(CompletionContext("What ", "ti", dictionaryWords = listOf("time")), max = 3)
         assertEquals(listOf("time", "is", "it"), result[0].words)
     }
 

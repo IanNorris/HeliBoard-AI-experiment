@@ -1534,18 +1534,19 @@ public class LatinIME extends InputMethodService implements
         updateCompletionStrip(currentSettingsValues, suggestedWords);
     }
 
-    /** The dictionary's best completion of [prefix] from [suggestedWords], or "" if none. */
-    private String dictionaryWordFor(final SuggestedWords suggestedWords, final String prefix) {
-        if (prefix.isEmpty() || suggestedWords == null) return "";
-        for (int i = 0; i < suggestedWords.size(); i++) {
+    /** The dictionary's best completions of [prefix] from [suggestedWords] (best first, de-duped). */
+    private java.util.List<String> dictionaryWordsFor(final SuggestedWords suggestedWords, final String prefix) {
+        final java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        if (prefix.isEmpty() || suggestedWords == null) return out;
+        for (int i = 0; i < suggestedWords.size() && out.size() < 4; i++) {
             final String w = suggestedWords.getWord(i);
             if (w != null && w.length() > prefix.length()
                     && w.regionMatches(true, 0, prefix, 0, prefix.length())
-                    && w.indexOf(' ') < 0) {
-                return w;
+                    && w.indexOf(' ') < 0 && !out.contains(w)) {
+                out.add(w);
             }
         }
-        return "";
+        return out;
     }
 
     /**
@@ -1652,14 +1653,14 @@ public class LatinIME extends InputMethodService implements
         // slow path: regenerate off the UI thread; swap in only if still valid when it returns
         final String genContext = leftContext;
         final String genPrefix = prefix;
-        final String genDictWord = dictionaryWordFor(suggestedWords, prefix);
+        final java.util.List<String> genDictWords = dictionaryWordsFor(suggestedWords, prefix);
         final int epochAtDispatch = mCompletionEngine.getCurrentEpoch();
         if (mCompletionGenerating) return; // one in-flight generation at a time
         mCompletionGenerating = true;
         mCompletionExecutor.execute(() -> {
             final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result;
             try {
-                result = mCompletionEngine.regenerate(genContext, genPrefix, genDictWord);
+                result = mCompletionEngine.regenerate(genContext, genPrefix, genDictWords);
             } finally {
                 mCompletionGenerating = false;
             }
