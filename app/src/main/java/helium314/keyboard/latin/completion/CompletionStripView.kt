@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import helium314.keyboard.latin.common.ColorType
+import helium314.keyboard.latin.settings.Settings
 
 /**
  * A horizontally scrollable strip that shows multi-word completion candidates, one per row, with
@@ -47,18 +49,19 @@ class CompletionStripView @JvmOverloads constructor(
     init {
         isFillViewport = true
         addView(rows)
+        Settings.getValues().mColors.setBackground(this, ColorType.STRIP_BACKGROUND)
     }
 
     /**
      * Replace the displayed candidates. Words whose prefix the user has already typed are shown
-     * dimmed as a hint of what tapping will keep; everything is tappable.
+     * dimmed as a hint of what tapping will keep; everything is tappable. Visibility of the whole
+     * strip is controlled by the host (to reserve a stable row), so this does not hide itself.
      */
     fun setCandidates(candidates: List<CompletionCandidate>, currentPrefix: String) {
         rows.removeAllViews()
         for (candidate in candidates) {
             rows.addView(buildRow(candidate, currentPrefix))
         }
-        visibility = if (candidates.isEmpty()) GONE else VISIBLE
     }
 
     fun clear() = setCandidates(emptyList(), "")
@@ -73,12 +76,12 @@ class CompletionStripView @JvmOverloads constructor(
             )
         }
         candidate.words.forEachIndexed { index, word ->
-            row.addView(buildWord(candidate, index, word))
+            row.addView(buildWord(candidate, index, word, currentPrefix))
         }
         return row
     }
 
-    private fun buildWord(candidate: CompletionCandidate, index: Int, word: String): TextView =
+    private fun buildWord(candidate: CompletionCandidate, index: Int, word: String, currentPrefix: String): TextView =
         TextView(context).apply {
             text = word
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
@@ -86,6 +89,9 @@ class CompletionStripView @JvmOverloads constructor(
             val padV = dp(8)
             setPadding(padH, padV, padH, padV)
             isClickable = true
+            val colors = Settings.getValues().mColors
+            // the first word is the completion of the in-progress word: highlight it; look-ahead words are dimmer
+            setTextColor(colors.get(if (index == 0) ColorType.SUGGESTION_VALID_WORD else ColorType.SUGGESTION_TYPED_WORD))
             setOnClickListener { listener?.onCompletionWordAccepted(candidate, index) }
         }
 

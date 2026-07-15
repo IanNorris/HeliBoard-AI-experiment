@@ -772,6 +772,10 @@ public class LatinIME extends InputMethodService implements
         mSuggestionStripView = mSettings.getCurrent().mToolbarMode == ToolbarMode.HIDDEN || isEmojiSearch()?
                         null : view.findViewById(R.id.suggestion_strip_view);
         mCompletionStripView = view.findViewById(R.id.completion_strip_view);
+        if (mCompletionStripView != null) {
+            mCompletionStripView.setListener((candidate, wordIndex) ->
+                    onCompletionWordAccepted(candidate, wordIndex));
+        }
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
             mSuggestionStripView.setListener(this, view);
@@ -802,7 +806,10 @@ public class LatinIME extends InputMethodService implements
         mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
         BackgroundGatheringCache.saveOrClear(this);
         mCompletionEngine.invalidate();
-        if (mCompletionStripView != null) mCompletionStripView.clear();
+        if (mCompletionStripView != null) {
+            mCompletionStripView.clear();
+            mCompletionStripView.setVisibility(View.GONE);
+        }
     }
 
     @Override
@@ -1206,7 +1213,11 @@ public class LatinIME extends InputMethodService implements
             return;
         }
         final int stripHeight = mKeyboardSwitcher.isShowingStripContainer() ? mKeyboardSwitcher.getStripContainer().getHeight() : 0;
-        int visibleTopY = inputHeight - visibleKeyboardView.getHeight() - stripHeight;
+        // the multi-word completion strip sits above the suggestion strip and, when shown, adds to
+        // the reserved keyboard region so it does not overlap the app's text field
+        final int completionStripHeight = (mCompletionStripView != null
+                && mCompletionStripView.getVisibility() == View.VISIBLE) ? mCompletionStripView.getHeight() : 0;
+        int visibleTopY = inputHeight - visibleKeyboardView.getHeight() - stripHeight - completionStripHeight;
         if (Settings.getValues().mIsFloatingKeyboard)
             visibleTopY = getResources().getDisplayMetrics().heightPixels;
 
@@ -1531,8 +1542,11 @@ public class LatinIME extends InputMethodService implements
         if (!eligible) {
             mCompletionEngine.invalidate();
             mCompletionStripView.clear();
+            mCompletionStripView.setVisibility(View.GONE);
             return;
         }
+        // reserve a stable row while the feature is on, so the strip does not jitter the IME window
+        mCompletionStripView.setVisibility(View.VISIBLE);
         if (mInputLogic.mConnection.hasSlowInputConnection()) {
             mCompletionStripView.clear();
             return;
@@ -1555,6 +1569,22 @@ public class LatinIME extends InputMethodService implements
             candidates = mCompletionEngine.regenerate(leftContext, prefix).getCandidates();
         }
         mCompletionStripView.setCandidates(candidates, prefix);
+    }
+
+    /**
+     * Handle a tap on a word in the completion strip: accept the completion up to (and including)
+     * the tapped word and commit it, mirroring the manual-suggestion-pick flow so typing state and
+     * cursor bookkeeping stay consistent.
+     */
+    private void onCompletionWordAccepted(
+            final helium314.keyboard.latin.completion.CompletionCandidate candidate, final int wordIndex) {
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        final String textToCommit = mCompletionEngine.accept(candidate, wordIndex);
+        final InputTransaction transaction = mInputLogic.commitAcceptedCompletion(
+                settingsValues, textToCommit, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
+        if (transaction != null) {
+            updateStateAfterInputTransaction(transaction);
+        }
     }
 
     @Override
@@ -1620,6 +1650,7 @@ public class LatinIME extends InputMethodService implements
             if (mCompletionStripView != null) {
                 mCompletionEngine.invalidate();
                 mCompletionStripView.clear();
+                mCompletionStripView.setVisibility(View.GONE);
             }
             return;
         }
