@@ -151,6 +151,9 @@ dependencies {
     // the app stays at minSdk 21 and the feature is gated at runtime on Build.VERSION.SDK_INT.
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
+    // On-device llama.cpp backend for base-model text completion (separate module: CMake native build)
+    implementation(project(":llama"))
+
     // test
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
