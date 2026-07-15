@@ -1277,6 +1277,15 @@ public final class InputLogic {
                     unlearnWord(rejectedSuggestion, inputTransaction.getSettingsValues(), DictionaryFacilitator.UnlearnEvent.REJECTION);
                 }
                 StatsUtils.onBackspaceWordDelete(rejectedSuggestion.length());
+            } else if (inputTransaction.getSettingsValues().mLongpressBackspaceDeleteWord && event.isKeyRepeat()) {
+                // Long-press word delete: clear the whole composing word at once instead of char by char.
+                final String deletedWord = mWordComposer.getTypedWord();
+                if (GestureDataGatheringKt.useBackgroundGathering)
+                    BackgroundGatheringCache.INSTANCE.removeLast(deletedWord);
+                mWordComposer.reset();
+                if (!TextUtils.isEmpty(deletedWord))
+                    unlearnWord(deletedWord, inputTransaction.getSettingsValues(), DictionaryFacilitator.UnlearnEvent.BACKSPACE);
+                StatsUtils.onBackspaceWordDelete(deletedWord.length());
             } else {
                 if (GestureDataGatheringKt.useBackgroundGathering)
                     BackgroundGatheringCache.INSTANCE.removeLast(mWordComposer.getTypedWord());
@@ -1361,6 +1370,16 @@ public final class InputLogic {
                         mConnection.getExpectedSelectionEnd());
                 mConnection.deleteTextBeforeCursor(numCharsDeleted);
                 StatsUtils.onBackspaceSelectedText(numCharsDeleted);
+            } else if (inputTransaction.getSettingsValues().mLongpressBackspaceDeleteWord
+                    && event.isKeyRepeat()
+                    && !inputTransaction.getSettingsValues().mInputAttributes.isTypeNull()
+                    && Constants.NOT_A_CURSOR_POSITION != mConnection.getExpectedSelectionEnd()) {
+                // Long-press word delete: remove the previous whole word in one step.
+                // Unlearn the word first, while it is still present before the cursor.
+                hasUnlearnedWordBeingDeleted |= unlearnWordBeingDeleted(
+                        inputTransaction.getSettingsValues(), currentKeyboardScript);
+                final int deletedLength = deletePreviousWord();
+                StatsUtils.onBackspacePressed(deletedLength);
             } else {
                 // There is no selection, just delete one character.
                 if (inputTransaction.getSettingsValues().mInputAttributes.isTypeNull()
@@ -1451,6 +1470,32 @@ public final class InputLogic {
             }
         }
         return "";
+    }
+
+    /**
+     * Deletes the whole word before the cursor, used for long-press backspace word deletion.
+     * Uses whitespace boundaries (like a terminal's Ctrl-W): it skips any trailing whitespace,
+     * then removes the preceding run of non-whitespace characters, so tokens such as URLs are
+     * removed as a single unit rather than stopping at every punctuation mark.
+     * Returns the number of characters (UTF-16 code units) deleted.
+     */
+    private int deletePreviousWord() {
+        final CharSequence before = mConnection.getTextBeforeCursor(Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+        if (TextUtils.isEmpty(before)) {
+            // Nothing cached (e.g. start of field or lagging connection); delete a single char.
+            mConnection.deleteTextBeforeCursor(1);
+            return 1;
+        }
+        int i = before.length();
+        // Skip trailing whitespace, then delete the preceding run of non-whitespace characters.
+        // The run boundary is always at a whitespace (a BMP character), so counting code units
+        // never splits a surrogate pair.
+        while (i > 0 && Character.isWhitespace(before.charAt(i - 1))) i--;
+        while (i > 0 && !Character.isWhitespace(before.charAt(i - 1))) i--;
+        int count = before.length() - i;
+        if (count <= 0) count = 1; // always make progress
+        mConnection.deleteTextBeforeCursor(count);
+        return count;
     }
 
     boolean unlearnWordBeingDeleted(

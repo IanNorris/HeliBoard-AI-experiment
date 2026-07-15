@@ -71,6 +71,7 @@ fun AdvancedSettingsScreen(
         if (Settings.readVerticalSpaceSwipe(prefs) == KeyboardActionListener.SwipeAction.TOUCHPAD_MODE)
             Settings.PREF_TOUCHPAD_EDGE_SCROLL else null,
         Settings.PREF_DELETE_SWIPE,
+        Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD,
         Settings.PREF_SPACE_TO_CHANGE_LANG,
         Settings.PREFS_LONG_PRESS_SYMBOLS_FOR_NUMPAD,
         Settings.PREF_ENABLE_EMOJI_ALT_PHYSICAL_KEY,
@@ -156,6 +157,10 @@ fun createAdvancedSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_DELETE_SWIPE, R.string.delete_swipe, R.string.delete_swipe_summary) {
         SwitchPreference(it, Defaults.PREF_DELETE_SWIPE)
+    },
+    Setting(context, Settings.PREF_LONGPRESS_BACKSPACE_DELETE_WORD,
+        R.string.longpress_backspace_delete_word, R.string.longpress_backspace_delete_word_summary) {
+        SwitchPreference(it, Defaults.PREF_LONGPRESS_BACKSPACE_DELETE_WORD)
     },
     Setting(context, Settings.PREF_SPACE_TO_CHANGE_LANG,
         R.string.prefs_long_press_keyboard_to_change_lang,
