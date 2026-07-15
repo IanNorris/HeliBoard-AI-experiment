@@ -224,6 +224,14 @@
     <string name="delete_swipe">Delete swipe</string>
     <!-- Description for "delete_swipe" option. -->
     <string name="delete_swipe_summary">Perform a swipe from the delete key to select and remove bigger portions of text at once</string>
+    <!-- Title for the option to delete whole words when the delete key is held down. -->
+    <string name="longpress_backspace_delete_word">Hold delete to remove words</string>
+    <!-- Description for "longpress_backspace_delete_word" option. -->
+    <string name="longpress_backspace_delete_word_summary">When holding the delete key, remove whole words at a time instead of single characters</string>
+    <!-- Title of the slider setting for how fast held backspace removes words. -->
+    <string name="longpress_backspace_delete_word_interval">Word delete interval</string>
+    <!-- Title of the slider setting for how much held backspace word deletion accelerates. -->
+    <string name="longpress_backspace_delete_word_acceleration">Word delete acceleration</string>
     <!-- Preferences item and dialog title for backup and restore -->
     <string name="backup_restore_title">Backup and restore</string>
     <!-- Message for backup and restore dialog -->
