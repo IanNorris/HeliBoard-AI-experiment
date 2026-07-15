@@ -44,7 +44,7 @@ data class ModelInfo(
 object ModelCatalog {
     val MODELS: List<ModelInfo> = listOf(
         // Default: a small BASE model (continues text rather than chatting) via llama.cpp. Apache-2.0
-        // and a genuine base checkpoint - the right fit for autocomplete.
+        // and a genuine base checkpoint - the right fit for autocomplete. Smallest/safest for RAM.
         ModelInfo(
             id = "smollm2-360m-base",
             displayName = "SmolLM2 360M (base, 4-bit)",
@@ -53,6 +53,19 @@ object ModelCatalog {
             sha256 = "",    // SHA-256 TBD; empty skips integrity check
             license = "Apache-2.0",
             licenseUrl = "https://huggingface.co/QuantFactory/SmolLM2-360M-GGUF",
+            runtime = ModelInfo.Runtime.LLAMA_CPP,
+            minSdk = 23,
+        ),
+        // Higher quality: SmolLM2 1.7B base. Noticeably more coherent / conversational than 360M, at
+        // ~1GB file and ~1.3GB RAM - heavier, may be OOM-killed on constrained devices.
+        ModelInfo(
+            id = "smollm2-1.7b-base",
+            displayName = "SmolLM2 1.7B (base, 4-bit) - higher quality",
+            url = "https://huggingface.co/QuantFactory/SmolLM2-1.7B-GGUF/resolve/main/SmolLM2-1.7B.Q4_K_M.gguf?download=true",
+            sizeBytes = 0L,
+            sha256 = "",
+            license = "Apache-2.0",
+            licenseUrl = "https://huggingface.co/QuantFactory/SmolLM2-1.7B-GGUF",
             runtime = ModelInfo.Runtime.LLAMA_CPP,
             minSdk = 23,
         ),

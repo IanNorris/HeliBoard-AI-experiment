@@ -10,6 +10,13 @@ package helium314.keyboard.latin.completion
 data class CompletionContext(
     val leftContext: String,
     val currentWordPrefix: String,
+    /**
+     * The keyboard dictionary's best completion of [currentWordPrefix] (e.g. "ti" -> "time"), or
+     * empty. Used to anchor mid-word completions: a small model can't reliably guess which word a
+     * short fragment means, but the dictionary can, so we complete the word with the dictionary and
+     * let the model continue from there.
+     */
+    val dictionaryWord: String = "",
 )
 
 /**

@@ -3,6 +3,7 @@ package helium314.keyboard.latin.completion
 
 import android.content.Context
 import android.os.Build
+import helium314.keyboard.latin.utils.prefs
 
 /**
  * Central access point for the on-device model: where it is on disk, whether it is installed, and
@@ -15,9 +16,22 @@ class ModelRepository private constructor(context: Context) {
     private val storage = FileModelStorage(appContext)
     private val source = HttpModelSource()
     private val downloader = ModelDownloader(source, storage)
+    private val prefs = appContext.prefs()
 
-    /** The model this build offers. */
-    val model: ModelInfo get() = ModelCatalog.default
+    /** The currently selected model (persisted); defaults to the catalog default. */
+    val model: ModelInfo
+        get() {
+            val id = prefs.getString(PREF_SELECTED_MODEL, null)
+            return (id?.let { ModelCatalog.byId(it) }) ?: ModelCatalog.default
+        }
+
+    /** All models this build offers (for a picker). */
+    val availableModels: List<ModelInfo> get() = ModelCatalog.MODELS
+
+    /** Select which model is active. */
+    fun selectModel(id: String) {
+        prefs.edit().putString(PREF_SELECTED_MODEL, id).apply()
+    }
 
     /** Whether the device meets the minimum API for on-device inference. */
     val isDeviceSupported: Boolean get() = Build.VERSION.SDK_INT >= model.minSdk
@@ -37,6 +51,7 @@ class ModelRepository private constructor(context: Context) {
     fun importModel(input: java.io.InputStream) { storage.installFromStream(model, input) }
 
     companion object {
+        private const val PREF_SELECTED_MODEL = "completion_selected_model"
         @Volatile private var instance: ModelRepository? = null
         @JvmStatic
         fun get(context: Context): ModelRepository =

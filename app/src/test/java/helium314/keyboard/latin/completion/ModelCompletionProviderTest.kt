@@ -36,6 +36,15 @@ class ModelCompletionProviderTest {
         CompletionContext(left, prefix)
 
     @Test
+    fun generate_midWord_usesDictionaryWordAnchor() {
+        // dictionary says "ti" -> "time"; model continues "What time" with "is it"
+        val backend = FakeBackend(output = " is it")
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        val result = provider.generate(CompletionContext("What ", "ti", dictionaryWord = "time"), max = 3)
+        assertEquals(listOf("time", "is", "it"), result[0].words)
+    }
+
+    @Test
     fun generate_midWord_reattachesPrefixToCompleteWord() {
         // user typed "What ti"; model continues "What ti" with "me is it"
         val backend = FakeBackend(output = "me is it")

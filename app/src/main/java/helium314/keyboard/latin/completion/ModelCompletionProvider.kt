@@ -38,9 +38,19 @@ class ModelCompletionProvider @JvmOverloads constructor(
     override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
         val partial = context.currentWordPrefix
 
-        // Mid-word: keep the in-progress fragment IN the prompt so a base model completes the word
-        // (typing "What ti" prompts "What ti" -> "me is it"); empty prefix: continue committed text.
-        val basePrompt = if (partial.isEmpty()) context.leftContext else context.leftContext + partial
+        // Mid-word anchoring: if the dictionary has a completion for the fragment (e.g. "ti"->"time"),
+        // prompt the model with the COMPLETED word ("What time") and prepend that word to the result.
+        // This gives a reliable first word (the model can't guess "time" from "ti") and no language
+        // drift. Falls back to raw-fragment continuation if there is no dictionary word.
+        val anchorWord = context.dictionaryWord.takeIf {
+            it.isNotEmpty() && it.startsWith(partial, ignoreCase = true) && it.length > partial.length
+        }
+
+        val basePrompt = when {
+            partial.isEmpty() -> context.leftContext
+            anchorWord != null -> context.leftContext + anchorWord
+            else -> context.leftContext + partial
+        }
         val prompt = PromptBuilder.build(basePrompt) ?: return emptyList()
         if (!ensureLoaded()) return emptyList()
 
@@ -56,11 +66,16 @@ class ModelCompletionProvider @JvmOverloads constructor(
             return expand(parsed, max)
         }
 
-        // If the continuation starts with whitespace, the model treated the fragment as a complete
-        // word, so there is no useful mid-word completion.
+        if (anchorWord != null) {
+            // the model continued from a complete word; the continuation should start with a space
+            val continuation = raw.trimStart()
+            val parsed = ResponseParser.parse("$anchorWord $continuation") ?: return emptyList()
+            if (!parsed.firstWord.equals(anchorWord, ignoreCase = true)) return emptyList()
+            return expand(parsed, max)
+        }
+
+        // no dictionary anchor: reattach the raw fragment (best effort for a base model)
         if (raw.isEmpty() || raw[0].isWhitespace()) return emptyList()
-        // Reattach the fragment verbatim so the first word includes what the user typed
-        // ("ti" + "me is it" -> "time is it"); robust regardless of subword tokenization.
         val parsed = ResponseParser.parse(partial + raw) ?: return emptyList()
         if (!parsed.firstWord.startsWith(partial, ignoreCase = true)) return emptyList()
         return expand(parsed, max)

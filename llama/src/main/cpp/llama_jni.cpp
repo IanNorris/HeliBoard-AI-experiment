@@ -69,14 +69,15 @@ jlong nativeLoad(JNIEnv* env, jobject, jstring jpath, jint n_ctx, jint n_threads
     llama_context* ctx = llama_init_from_model(model, cp);
     if (!ctx) { LOGE("context init failed"); llama_model_free(model); return 0; }
 
-    // Light sampling (not greedy): a repetition penalty + top-k/top-p + low temperature. Greedy on a
-    // small base model produces repetition loops ("greasy, greasy, greasy") and robotic text; this
-    // keeps output coherent but natural. Params are conservative for keyboard-appropriate stability.
+    // Light sampling (not greedy): a repetition penalty avoids loops ("greasy, greasy, greasy"),
+    // while min-p rejects low-probability tokens (so suggestions are the model's CONFIDENT choices,
+    // not tail picks) and a low temperature keeps output grounded. Keyboard-appropriate stability.
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(/*last_n*/ 64, /*repeat*/ 1.3f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.1f, 1));   // drop tokens well below the top
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.92f, 1));
-    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.4f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.2f));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     Session* s = new Session();

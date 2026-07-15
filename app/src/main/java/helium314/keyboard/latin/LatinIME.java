@@ -1529,7 +1529,21 @@ public class LatinIME extends InputMethodService implements
                 mSuggestionStripView.setToolbarVisibility(false);
             }
         }
-        updateCompletionStrip(currentSettingsValues);
+        updateCompletionStrip(currentSettingsValues, suggestedWords);
+    }
+
+    /** The dictionary's best completion of [prefix] from [suggestedWords], or "" if none. */
+    private String dictionaryWordFor(final SuggestedWords suggestedWords, final String prefix) {
+        if (prefix.isEmpty() || suggestedWords == null) return "";
+        for (int i = 0; i < suggestedWords.size(); i++) {
+            final String w = suggestedWords.getWord(i);
+            if (w != null && w.length() > prefix.length()
+                    && w.regionMatches(true, 0, prefix, 0, prefix.length())
+                    && w.indexOf(' ') < 0) {
+                return w;
+            }
+        }
+        return "";
     }
 
     /**
@@ -1582,7 +1596,7 @@ public class LatinIME extends InputMethodService implements
      * result swapped in later only if the context is still valid (epoch unchanged), so slow on-device
      * inference never blocks typing.
      */
-    private void updateCompletionStrip(final SettingsValues settingsValues) {
+    private void updateCompletionStrip(final SettingsValues settingsValues, final SuggestedWords suggestedWords) {
         if (mCompletionStripView == null || mCompletionEngine == null) return;
         final boolean eligible = settingsValues.mMultiwordCompletionEnabled
                 && hasSuggestionStripView()
@@ -1623,13 +1637,14 @@ public class LatinIME extends InputMethodService implements
         // slow path: regenerate off the UI thread; swap in only if still valid when it returns
         final String genContext = leftContext;
         final String genPrefix = prefix;
+        final String genDictWord = dictionaryWordFor(suggestedWords, prefix);
         final int epochAtDispatch = mCompletionEngine.getCurrentEpoch();
         if (mCompletionGenerating) return; // one in-flight generation at a time
         mCompletionGenerating = true;
         mCompletionExecutor.execute(() -> {
             final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result;
             try {
-                result = mCompletionEngine.regenerate(genContext, genPrefix);
+                result = mCompletionEngine.regenerate(genContext, genPrefix, genDictWord);
             } finally {
                 mCompletionGenerating = false;
             }

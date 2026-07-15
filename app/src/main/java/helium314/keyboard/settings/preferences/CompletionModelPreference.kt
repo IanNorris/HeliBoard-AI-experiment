@@ -69,6 +69,22 @@ fun CompletionModelPreference() {
         onClick = { if (supported) showDialog = true },
     )
 
+    // model selector: tap to cycle through the available models (llama.cpp base models + Gemma)
+    var selectedName by remember { mutableStateOf(repo.model.displayName) }
+    Preference(
+        name = "Model: $selectedName",
+        description = "Tap to switch model, then download/import it below",
+        onClick = {
+            val models = repo.availableModels
+            val idx = models.indexOfFirst { it.id == repo.model.id }
+            val next = models[(idx + 1) % models.size]
+            repo.selectModel(next.id)
+            selectedName = next.displayName
+            installed = repo.isInstalled()
+            progress = if (installed) DownloadState.Ready else DownloadState.NotDownloaded
+        },
+    )
+
     if (showDialog) {
         ConfirmationDialog(
             onDismissRequest = { showDialog = false },
