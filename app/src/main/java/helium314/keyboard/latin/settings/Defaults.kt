@@ -76,6 +76,7 @@ object Defaults {
     const val PREF_CENTER_SUGGESTION_TEXT_TO_ENTER = false
     const val PREF_SHOW_SUGGESTIONS = true
     const val PREF_ENABLE_MULTIWORD_COMPLETION = false
+    const val PREF_COMPLETION_USE_NGRAM_CHAIN = false
     const val PREF_ALWAYS_SHOW_SUGGESTIONS = false
     const val PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT = true
     const val PREF_KEY_USE_PERSONALIZED_DICTS = true

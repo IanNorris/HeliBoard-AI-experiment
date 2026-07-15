@@ -146,6 +146,7 @@ public class LatinIME extends InputMethodService implements
     private java.util.concurrent.ExecutorService mCompletionExecutor;
     private volatile boolean mCompletionGenerating = false;
     private String mCompletionModelId = null;
+    private boolean mCompletionUseNgramChain = false;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -1558,9 +1559,14 @@ public class LatinIME extends InputMethodService implements
         final helium314.keyboard.latin.completion.ModelRepository repo =
                 helium314.keyboard.latin.completion.ModelRepository.get(this);
         mCompletionModelId = repo.getEffectiveModel().getId();
+        mCompletionUseNgramChain = mSettings.getCurrent().mCompletionUseNgramChain;
         helium314.keyboard.latin.completion.CompletionProvider provider =
                 new helium314.keyboard.latin.completion.StubCompletionProvider();
-        if (repo.isDeviceSupported()) {
+        if (mCompletionUseNgramChain) {
+            // Experimental source: skip the LLM and chain the keyboard's own next-word predictor.
+            provider = new helium314.keyboard.latin.completion.NgramChainCompletionProvider(
+                    this::predictNextWordsForCompletion);
+        } else if (repo.isDeviceSupported()) {
             try {
                 final helium314.keyboard.latin.completion.InferenceBackend backend =
                         createInferenceBackend(repo);
@@ -1579,15 +1585,58 @@ public class LatinIME extends InputMethodService implements
             mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
     }
 
-    /** Rebuild the completion engine if the effective (installed/selected) model has changed. */
+    /** Rebuild the completion engine if the effective (installed/selected) model or source changed. */
     private void reinitCompletionEngineIfModelChanged() {
         final helium314.keyboard.latin.completion.ModelRepository repo =
                 helium314.keyboard.latin.completion.ModelRepository.get(this);
         final String current = repo.getEffectiveModel().getId();
-        if (current == null ? mCompletionModelId == null : current.equals(mCompletionModelId)) return;
+        final boolean useNgramChain = mSettings.getCurrent().mCompletionUseNgramChain;
+        final boolean modelSame = current == null ? mCompletionModelId == null : current.equals(mCompletionModelId);
+        if (modelSame && useNgramChain == mCompletionUseNgramChain) return;
         if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
         mModelCompletionProvider = null;
         initCompletionEngine();
+    }
+
+    /**
+     * Next-word predictions for the completion chain: query the dictionary facilitator (which
+     * includes the personal history dictionary) with an empty typed word and an n-gram context built
+     * from [contextWords]. Returns the predicted words best-first. Runs on the completion worker
+     * thread; the facilitator's suggestion lookup is internally synchronized.
+     */
+    private java.util.List<String> predictNextWordsForCompletion(final java.util.List<String> contextWords) {
+        final java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        final DictionaryFacilitator df = mDictionaryFacilitator;
+        final Keyboard keyboard = mKeyboardSwitcher.getKeyboard();
+        if (df == null || keyboard == null || !df.hasAtLeastOneInitializedMainDictionary()) return out;
+        final SettingsValues settingsValues = mSettings.getCurrent();
+
+        final NgramContext ngramContext;
+        if (contextWords.isEmpty()) {
+            ngramContext = NgramContext.EMPTY_PREV_WORDS_INFO;
+        } else {
+            final int maxPrev = Math.min(contextWords.size(), 3);
+            final NgramContext.WordInfo[] infos = new NgramContext.WordInfo[maxPrev];
+            for (int i = 0; i < maxPrev; i++) {
+                // last word first: infos[0] is the immediately-preceding word
+                infos[i] = new NgramContext.WordInfo(contextWords.get(contextWords.size() - 1 - i));
+            }
+            ngramContext = new NgramContext(infos);
+        }
+        try {
+            final helium314.keyboard.latin.utils.SuggestionResults results =
+                    df.getSuggestionResults(
+                            new helium314.keyboard.latin.common.ComposedData(
+                                    new helium314.keyboard.latin.common.InputPointers(1), false, ""),
+                            ngramContext, keyboard, settingsValues.mSettingsValuesForSuggestion,
+                            0 /* SESSION_ID_TYPING */, SuggestedWords.INPUT_STYLE_PREDICTION);
+            for (final SuggestedWords.SuggestedWordInfo info : results) {
+                if (info.mWord != null && !info.mWord.isEmpty()) out.add(info.mWord);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "next-word prediction failed", t);
+        }
+        return out;
     }
 
     /** Pick the inference backend matching the effective (installed) model's runtime. */

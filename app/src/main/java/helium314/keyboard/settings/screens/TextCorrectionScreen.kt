@@ -81,6 +81,9 @@ fun TextCorrectionScreen(
         if (suggestionsVisible) Settings.PREF_SHOW_SUGGESTIONS else null,
         Settings.PREF_ENABLE_MULTIWORD_COMPLETION,
         if (prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION))
+            Settings.PREF_COMPLETION_USE_NGRAM_CHAIN else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+            && !prefs.getBoolean(Settings.PREF_COMPLETION_USE_NGRAM_CHAIN, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN))
             SettingsWithoutKey.MANAGE_COMPLETION_MODEL else null,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled && prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS))
@@ -199,6 +202,11 @@ fun createCorrectionSettings(context: Context) = listOf(
         R.string.prefs_multiword_completion, R.string.prefs_multiword_completion_summary
     ) {
         SwitchPreference(it, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+    },
+    Setting(context, Settings.PREF_COMPLETION_USE_NGRAM_CHAIN,
+        R.string.prefs_completion_ngram_chain, R.string.prefs_completion_ngram_chain_summary
+    ) {
+        SwitchPreference(it, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN)
     },
     Setting(context, SettingsWithoutKey.MANAGE_COMPLETION_MODEL, R.string.prefs_multiword_completion) {
         helium314.keyboard.settings.preferences.CompletionModelPreference()
