@@ -396,9 +396,11 @@
     <!-- Hint shown above the scratch test field -->
     <string name="test_field_hint">Type here to try out the keyboard and its suggestions.</string>
     <!-- Placeholder text inside the scratch test field -->
-    <string name="test_field_placeholder">Type something…</string>
+    <string name="test_field_placeholder">Type here to test the keyboard…</string>
     <!-- Button that empties the scratch test field -->
     <string name="test_field_clear">Clear</string>
+    <!-- Content description of the button that shows/hides the scratch test field in settings -->
+    <string name="test_field_toggle">Toggle test field</string>
     <!-- Title of the setting to set clipboard toolbar keys -->
     <string name="clipboard_toolbar_keys">Select clipboard toolbar keys</string>
     <!-- Title of the setting to set pinned toolbar keys -->

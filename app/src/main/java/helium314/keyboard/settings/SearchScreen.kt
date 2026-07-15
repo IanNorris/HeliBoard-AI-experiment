@@ -152,6 +152,7 @@ fun <T: Any?> SearchScreen(
                             }
                         },
                         actions = {
+                            SettingsTestFieldToggle()
                             if (icon == null)
                                 IconButton(onClick = { setShowSearch(!showSearch) }) { SearchIcon() }
                             else
@@ -188,6 +189,7 @@ fun <T: Any?> SearchScreen(
                             focusedContainerColor = MaterialTheme.colorScheme.surface
                         )
                     )
+                    SettingsTestField()
                 }
             }
             CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.bodyLarge) {
