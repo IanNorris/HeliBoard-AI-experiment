@@ -65,6 +65,7 @@ fun TextCorrectionScreen(
         Settings.PREF_AUTO_CORRECTION,
         if (autocorrectEnabled) Settings.PREF_MORE_AUTO_CORRECTION else null,
         if (autocorrectEnabled) Settings.PREF_AUTOCORRECT_SHORTCUTS else null,
+        if (autocorrectEnabled) Settings.PREF_KEEP_VALID_TYPED_WORD else null,
         if (autocorrectEnabled) Settings.PREF_AUTOCORRECT_CAPITALIZED_SUGGESTION else null,
         if (autocorrectEnabled) Settings.PREF_AUTO_CORRECT_CONFIDENCE else null,
         if (autocorrectEnabled) Settings.PREF_BACKSPACE_REVERTS_AUTOCORRECT else null,
@@ -154,6 +155,10 @@ fun createCorrectionSettings(context: Context) = listOf(
     },
     Setting(context, Settings.PREF_BACKSPACE_REVERTS_AUTOCORRECT, R.string.backspace_reverts_autocorrect) {
         SwitchPreference(it, Defaults.PREF_BACKSPACE_REVERTS_AUTOCORRECT)
+    },
+    Setting(context, Settings.PREF_KEEP_VALID_TYPED_WORD,
+        R.string.keep_valid_typed_word, R.string.keep_valid_typed_word_summary) {
+        SwitchPreference(it, Defaults.PREF_KEEP_VALID_TYPED_WORD)
     },
     Setting(context, Settings.PREF_AUTO_CAP,
         R.string.auto_cap, R.string.auto_cap_summary

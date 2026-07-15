@@ -217,6 +217,9 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
             // main dict => no auto-correct. Also, it would probably get obnoxious quickly.
             // TODO: now that we have personalization, we may want to re-evaluate this decision
             || !mDictionaryFacilitator.hasAtLeastOneInitializedMainDictionary()
+            // If the user opted to keep valid typed words, never auto-correct a word that is
+            // already in a dictionary; only genuine typos (not in any dictionary) get corrected.
+            || (Settings.getValues().mKeepValidTypedWord && typedWordInfo?.mSourceDict != null)
         ) {
             hasAutoCorrection = false
         } else {
