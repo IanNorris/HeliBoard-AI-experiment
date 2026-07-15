@@ -137,6 +137,7 @@ class Suggest(private val mDictionaryFacilitator: DictionaryFacilitator) {
         if (
             (hasAutoCorrection
                 || (Settings.getValues().mCenterSuggestionTextToEnter && !wordComposer.isResumed)
+                || (Settings.getValues().mKeepValidTypedWord && !wordComposer.isResumed)
                 || typedWordWasCapitalized
             ) && suggestionsList.size >= indexOfTypedWord && capitalizedTypedWord.isNotEmpty()) {
             if (typedWordFirstOccurrenceWordInfo != null) {
