@@ -390,6 +390,15 @@
     <string name="emoji" tools:keep="@string/emoji">Emoji</string>
     <string name="floating" tools:keep="@string/floating">Floating Keyboard</string>
     <string name="symbols" tools:keep="@string/symbols">Symbols</string>
+    <string name="test" tools:keep="@string/test">Test keyboard</string>
+    <!-- Title of the scratch text field opened by the Test toolbar key -->
+    <string name="test_field_title">Test the keyboard</string>
+    <!-- Hint shown above the scratch test field -->
+    <string name="test_field_hint">Type here to try out the keyboard and its suggestions.</string>
+    <!-- Placeholder text inside the scratch test field -->
+    <string name="test_field_placeholder">Type something…</string>
+    <!-- Button that empties the scratch test field -->
+    <string name="test_field_clear">Clear</string>
     <!-- Title of the setting to set clipboard toolbar keys -->
     <string name="clipboard_toolbar_keys">Select clipboard toolbar keys</string>
     <!-- Title of the setting to set pinned toolbar keys -->

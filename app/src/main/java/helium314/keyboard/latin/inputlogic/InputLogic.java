@@ -737,6 +737,9 @@ public final class InputLogic {
             case KeyCode.SETTINGS:
                 onSettingsKeyPressed();
                 break;
+            case KeyCode.TEST_FIELD:
+                mLatinIME.launchTestField();
+                break;
             case KeyCode.ACTION_NEXT:
                 performEditorAction(EditorInfo.IME_ACTION_NEXT);
                 break;
