@@ -89,6 +89,10 @@ object Defaults {
     @JvmField
     val PREF_BOTTOM_ROW_SCALE = Array(4) { DEFAULT_SIZE_SCALE }
     @JvmField
+    // width scale applied to the non-space keys in the bottom (space bar) row:
+    // < 1 shrinks the side keys, which widens the fill space bar
+    val PREF_BOTTOM_ROW_SIDE_WIDTH_SCALE = Array(4) { DEFAULT_SIZE_SCALE }
+    @JvmField
     // DEFAULT_SIZE_SCALE for portrait, 0 for landscape (normal and folded)
     val PREF_BOTTOM_PADDING_SCALE = arrayOf(DEFAULT_SIZE_SCALE, 0f, DEFAULT_SIZE_SCALE, 0f)
     @JvmField

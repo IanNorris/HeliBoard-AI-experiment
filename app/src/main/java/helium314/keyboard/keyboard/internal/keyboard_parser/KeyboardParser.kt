@@ -159,6 +159,18 @@ class KeyboardParser(private val params: KeyboardParams, private val context: Co
             val varWidthKeys = mutableListOf<KeyParams>()
             var totalWidth = 0f
             val allKeys = (functionalKeysLeft + keys + functionalKeysRight)
+
+            // user width customization for the space bar row: shrinking the fixed-width side
+            // keys widens the fill (-1) space bar, since it expands into the freed space.
+            // only applies to alpha/symbol layouts, and only to the row that holds the space bar.
+            val sideWidthScale = Settings.getValues().mBottomRowSideWidthScale
+            if (sideWidthScale != 1f && params.mId.element.isAlphaOrSymbol && allKeys.any { it.mWidth == -1f }) {
+                allKeys.forEach {
+                    if (it.mWidth > 0f && !it.isSpacer)
+                        it.mWidth = (it.mWidth * sideWidthScale).coerceAtLeast(MIN_BOTTOM_ROW_KEY_WIDTH)
+                }
+            }
+
             allKeys.forEach {
                 if (it.mWidth == -1f) varWidthKeys.add(it)
                 else totalWidth += it.mWidth
@@ -336,6 +348,8 @@ class KeyboardParser(private val params: KeyboardParams, private val context: Co
 
     companion object {
         private const val TAG = "KeyboardParser"
+        // smallest fractional width a bottom-row side key may shrink to, so keys stay tappable
+        private const val MIN_BOTTOM_ROW_KEY_WIDTH = 0.05f
     }
 
 }

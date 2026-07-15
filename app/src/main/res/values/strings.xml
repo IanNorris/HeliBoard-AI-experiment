@@ -405,6 +405,8 @@
     <string name="prefs_bottom_padding_scale">Bottom padding scale</string>
     <!-- Title of the setting for setting height of the bottom row -->
     <string name="prefs_bottom_row_scale">Bottom row scale</string>
+    <!-- Title of the setting that scales the width of the keys next to the space bar; reducing it widens the space bar -->
+    <string name="prefs_bottom_row_side_width_scale">Space bar row side key width</string>
     <!-- Title of the setting for setting side padding -->
     <string name="prefs_side_padding_scale">Side padding scale</string>
     <!-- Title of the setting for adjusting font size on the keyboard -->

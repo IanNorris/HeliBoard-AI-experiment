@@ -101,6 +101,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_SPLIT_SPACER_SCALE_PREFIX = "split_spacer_scale";
     public static final String PREF_KEYBOARD_HEIGHT_SCALE_PREFIX = "keyboard_height_scale";
     public static final String PREF_BOTTOM_ROW_SCALE_PREFIX = "bottom_row_scale";
+    public static final String PREF_BOTTOM_ROW_SIDE_WIDTH_SCALE_PREFIX = "bottom_row_side_width_scale";
     public static final String PREF_BOTTOM_PADDING_SCALE_PREFIX = "bottom_padding_scale";
     public static final String PREF_SIDE_PADDING_SCALE_PREFIX = "side_padding_scale";
     public static final String PREF_KEY_GAP_SCALE_PREFIX = "key_gap_scale";
@@ -474,6 +475,13 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
         final Float[] defaults = Defaults.PREF_BOTTOM_ROW_SCALE;
         final float defaultValue = defaults[index];
         return prefs.getFloat(SettingsKt.createPrefKeyForBooleanSettings(PREF_BOTTOM_ROW_SCALE_PREFIX, index, 2), defaultValue);
+    }
+
+    public static float readBottomRowSideWidthScale(SharedPreferences prefs, boolean landscape, boolean folded) {
+        int index = SettingsKt.findIndexOfDefaultSetting(landscape, folded);
+        final Float[] defaults = Defaults.PREF_BOTTOM_ROW_SIDE_WIDTH_SCALE;
+        final float defaultValue = defaults[index];
+        return prefs.getFloat(SettingsKt.createPrefKeyForBooleanSettings(PREF_BOTTOM_ROW_SIDE_WIDTH_SCALE_PREFIX, index, 2), defaultValue);
     }
 
     public static float readKeyGapScale(SharedPreferences prefs, boolean landscape, boolean folded) {
