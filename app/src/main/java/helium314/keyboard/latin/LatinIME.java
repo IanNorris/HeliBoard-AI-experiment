@@ -1916,14 +1916,6 @@ public class LatinIME extends InputMethodService implements
         startActivity(intent);
     }
 
-    /** Opens a scratch text field (with suggestions enabled) so the user can try out the keyboard,
-     * e.g. while tweaking settings in a search field that suppresses suggestions. */
-    public void launchTestField() {
-        mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
-        startActivity(new Intent().setClass(this, helium314.keyboard.latin.TestInputActivity.class)
-                          .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK));
-    }
-
     public void launchEmojiSearch() {
         Log.d("emoji-search", "before activity launch");
         startActivity(new Intent().setClass(this, EmojiSearchActivity.class)

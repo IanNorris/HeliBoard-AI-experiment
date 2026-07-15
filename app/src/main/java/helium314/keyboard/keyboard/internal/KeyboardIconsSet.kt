@@ -157,7 +157,6 @@ class KeyboardIconsSet private constructor() {
                     ToolbarKey.SPLIT -> R.drawable.ic_ime_switcher
                     ToolbarKey.BACKGROUND_GATHERING -> R.drawable.ic_settings_gesture
                     ToolbarKey.SYMBOLS -> R.drawable.ic_emoji_symbols
-                    ToolbarKey.TEST -> R.drawable.ic_edit
                 })
             }
         } }
@@ -222,7 +221,6 @@ class KeyboardIconsSet private constructor() {
                     ToolbarKey.SPLIT -> R.drawable.ic_ime_switcher
                     ToolbarKey.BACKGROUND_GATHERING -> R.drawable.ic_settings_gesture
                     ToolbarKey.SYMBOLS -> R.drawable.ic_emoji_symbols_lxx
-                    ToolbarKey.TEST -> R.drawable.ic_edit
                 })
             }
         } }
@@ -287,7 +285,6 @@ class KeyboardIconsSet private constructor() {
                     ToolbarKey.SPLIT -> R.drawable.ic_ime_switcher
                     ToolbarKey.BACKGROUND_GATHERING -> R.drawable.ic_settings_gesture
                     ToolbarKey.SYMBOLS -> R.drawable.ic_emoji_symbols_rounded
-                    ToolbarKey.TEST -> R.drawable.ic_edit
                 })
             }
         } }
