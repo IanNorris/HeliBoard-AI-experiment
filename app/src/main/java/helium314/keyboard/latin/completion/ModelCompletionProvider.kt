@@ -36,7 +36,12 @@ class ModelCompletionProvider @JvmOverloads constructor(
     fun isModelAvailable(): Boolean = modelPathProvider.getPath() != null && !loadFailed
 
     override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
-        val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
+        val partial = context.currentWordPrefix
+
+        // Mid-word: keep the in-progress fragment IN the prompt so a base model completes the word
+        // (typing "What ti" prompts "What ti" -> "me is it"); empty prefix: continue committed text.
+        val basePrompt = if (partial.isEmpty()) context.leftContext else context.leftContext + partial
+        val prompt = PromptBuilder.build(basePrompt) ?: return emptyList()
         if (!ensureLoaded()) return emptyList()
 
         val raw = try {
@@ -45,7 +50,19 @@ class ModelCompletionProvider @JvmOverloads constructor(
             // a generation failure shouldn't kill the feature; degrade to no model candidates
             return emptyList()
         }
-        val parsed = ResponseParser.parse(raw, promptEcho = prompt) ?: return emptyList()
+
+        if (partial.isEmpty()) {
+            val parsed = ResponseParser.parse(raw, promptEcho = prompt) ?: return emptyList()
+            return expand(parsed, max)
+        }
+
+        // If the continuation starts with whitespace, the model treated the fragment as a complete
+        // word, so there is no useful mid-word completion.
+        if (raw.isEmpty() || raw[0].isWhitespace()) return emptyList()
+        // Reattach the fragment verbatim so the first word includes what the user typed
+        // ("ti" + "me is it" -> "time is it"); robust regardless of subword tokenization.
+        val parsed = ResponseParser.parse(partial + raw) ?: return emptyList()
+        if (!parsed.firstWord.startsWith(partial, ignoreCase = true)) return emptyList()
         return expand(parsed, max)
     }
 

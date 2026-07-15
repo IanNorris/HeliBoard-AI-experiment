@@ -36,6 +36,24 @@ class ModelCompletionProviderTest {
         CompletionContext(left, prefix)
 
     @Test
+    fun generate_midWord_reattachesPrefixToCompleteWord() {
+        // user typed "What ti"; model continues "What ti" with "me is it"
+        val backend = FakeBackend(output = "me is it")
+        val provider = ModelCompletionProvider(backend, { "/models/x.task" })
+        val result = provider.generate(CompletionContext("What ", "ti"), max = 3)
+        // first word must include the typed fragment
+        assertEquals(listOf("time", "is", "it"), result[0].words)
+    }
+
+    @Test
+    fun generate_midWord_rejectsWhenModelStartsNewWord() {
+        // continuation begins with a space -> model treated "ti" as complete -> no mid-word completion
+        val backend = FakeBackend(output = " is it")
+        val provider = ModelCompletionProvider(backend, { "/models/x.task" })
+        assertTrue(provider.generate(CompletionContext("What ", "ti"), max = 3).isEmpty())
+    }
+
+    @Test
     fun generate_returnsProgressiveCandidatesFromOneContinuation() {
         val backend = FakeBackend(output = "good time last week")
         val provider = ModelCompletionProvider(backend, { "/models/x.task" })
