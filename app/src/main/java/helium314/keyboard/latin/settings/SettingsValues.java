@@ -136,6 +136,7 @@ public class SettingsValues {
     public final boolean mAlphaAfterClipHistoryEntry;
     public final EnumSet<KeyboardState.Mode> mAlphaAfterSpace = EnumSet.noneOf(KeyboardState.Mode.class);
     public final boolean mRemoveRedundantPopups;
+    public final boolean mHideBottomSymbolKey;
     public final String mSpaceBarText;
     public final float mFontSizeMultiplier;
     public final float mHintFontSizeMultiplier;
@@ -330,6 +331,7 @@ public class SettingsValues {
             mAlphaAfterSpace.add(KeyboardState.Mode.NUMPAD);
         }
         mRemoveRedundantPopups = prefs.getBoolean(Settings.PREF_REMOVE_REDUNDANT_POPUPS, Defaults.PREF_REMOVE_REDUNDANT_POPUPS);
+        mHideBottomSymbolKey = prefs.getBoolean(Settings.PREF_HIDE_BOTTOM_SYMBOL_KEY, Defaults.PREF_HIDE_BOTTOM_SYMBOL_KEY);
         mSpaceBarText = prefs.getString(Settings.PREF_SPACE_BAR_TEXT, Defaults.PREF_SPACE_BAR_TEXT);
         mFontSizeMultiplier = prefs.getFloat(Settings.PREF_FONT_SCALE, Defaults.PREF_FONT_SCALE);
         mHintFontSizeMultiplier = mShowsHints ? prefs.getFloat(Settings.PREF_HINT_FONT_SCALE, Defaults.PREF_HINT_FONT_SCALE) : 1;
