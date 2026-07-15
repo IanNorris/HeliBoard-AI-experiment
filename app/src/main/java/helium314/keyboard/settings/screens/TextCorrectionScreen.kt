@@ -79,6 +79,8 @@ fun TextCorrectionScreen(
         R.string.settings_category_suggestions,
         if (suggestionsVisible) Settings.PREF_SHOW_SUGGESTIONS else null,
         Settings.PREF_ENABLE_MULTIWORD_COMPLETION,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION))
+            SettingsWithoutKey.MANAGE_COMPLETION_MODEL else null,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled && prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS))
             Settings.PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT else null,
@@ -192,6 +194,9 @@ fun createCorrectionSettings(context: Context) = listOf(
         R.string.prefs_multiword_completion, R.string.prefs_multiword_completion_summary
     ) {
         SwitchPreference(it, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+    },
+    Setting(context, SettingsWithoutKey.MANAGE_COMPLETION_MODEL, R.string.prefs_multiword_completion) {
+        helium314.keyboard.settings.preferences.CompletionModelPreference()
     },
     Setting(context, Settings.PREF_ALWAYS_SHOW_SUGGESTIONS,
         R.string.prefs_always_show_suggestions, R.string.prefs_always_show_suggestions_summary
