@@ -100,4 +100,26 @@ class PromptResponseTest {
         assertEquals("good time last", c.acceptedText(2))
         assertTrue(c.matchesPrefix("go"))
     }
+
+    @Test
+    fun parse_attachesTrailingPunctuationToWord() {
+        // model emits a detached "?" -> it should merge onto the preceding word, not be its own chip
+        val c = ResponseParser.parse("are you there ?")!!
+        assertEquals(listOf("are", "you", "there?"), c.words)
+    }
+
+    @Test
+    fun parse_mergesMultiCharPunctuationToken() {
+        val c = ResponseParser.parse("wait what ...")!!
+        assertEquals(listOf("wait", "what..."), c.words)
+    }
+
+    @Test
+    fun mergeTrailingPunctuation_keepsIntraWordApostrophes() {
+        // apostrophes inside a word must NOT trigger a merge (the token has letters)
+        assertEquals(
+            listOf("I'll", "be", "there!"),
+            CompletionCandidate.mergeTrailingPunctuation(listOf("I'll", "be", "there", "!")),
+        )
+    }
 }

@@ -2,13 +2,16 @@
 package helium314.keyboard.latin.completion
 
 import android.content.Context
+import android.graphics.PorterDuff
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.graphics.ColorUtils
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.ColorType
 import helium314.keyboard.latin.settings.Settings
@@ -70,12 +73,26 @@ class CompletionStripView @JvmOverloads constructor(
      */
     fun setCandidates(candidates: List<CompletionCandidate>, currentPrefix: String) {
         rows.removeAllViews()
+        if (candidates.isEmpty()) {
+            rows.addView(buildPlaceholder())
+            return
+        }
         for (candidate in candidates) {
             rows.addView(buildRow(candidate, currentPrefix))
         }
     }
 
     fun clear() = setCandidates(emptyList(), "")
+
+    /** Dim hint shown when there are no candidates, so the reserved strip doesn't look broken/empty. */
+    private fun buildPlaceholder(): TextView =
+        TextView(context).apply {
+            text = resources.getString(R.string.completion_strip_placeholder)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            val colors = Settings.getValues().mColors
+            setTextColor(ColorUtils.setAlphaComponent(colors.get(ColorType.SUGGESTION_TYPED_WORD), 0x80))
+        }
 
     private fun buildRow(candidate: CompletionCandidate, currentPrefix: String): LinearLayout {
         val row = LinearLayout(context).apply {
@@ -87,10 +104,26 @@ class CompletionStripView @JvmOverloads constructor(
             )
         }
         candidate.words.forEachIndexed { index, word ->
+            if (index > 0) row.addView(buildDivider())
             row.addView(buildWord(candidate, index, word, currentPrefix))
         }
         return row
     }
+
+    /** A thin vertical separator between words, matching the suggestion strip's divider style. */
+    private fun buildDivider(): ImageView =
+        ImageView(context).apply {
+            setImageResource(R.drawable.suggestions_strip_divider)
+            val colors = Settings.getValues().mColors
+            setColorFilter(
+                ColorUtils.setAlphaComponent(colors.get(ColorType.SUGGESTION_TYPED_WORD), 0x40),
+                PorterDuff.Mode.SRC_IN,
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            )
+        }
 
     private fun buildWord(candidate: CompletionCandidate, index: Int, word: String, currentPrefix: String): TextView =
         TextView(context).apply {

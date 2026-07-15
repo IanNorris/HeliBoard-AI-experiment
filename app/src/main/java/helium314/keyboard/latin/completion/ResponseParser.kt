@@ -47,7 +47,9 @@ object ResponseParser {
         val words = text.split(WHITESPACE).filter { it.isNotEmpty() }
         if (words.isEmpty()) return null
 
-        val capped = words.take(maxWords)
+        // keep trailing punctuation attached to its word ("night", "?" -> "night?")
+        val merged = CompletionCandidate.mergeTrailingPunctuation(words)
+        val capped = merged.take(maxWords)
         return CompletionCandidate(capped)
     }
 }

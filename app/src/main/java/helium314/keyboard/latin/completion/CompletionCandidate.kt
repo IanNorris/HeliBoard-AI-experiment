@@ -38,6 +38,24 @@ data class CompletionCandidate(val words: List<String>) {
 
         /** Builds a candidate from a plain string like "good time last week". */
         fun of(text: String): CompletionCandidate =
-            CompletionCandidate(text.trim().split(WHITESPACE).filter { it.isNotEmpty() })
+            CompletionCandidate(mergeTrailingPunctuation(text.trim().split(WHITESPACE).filter { it.isNotEmpty() }))
+
+        /**
+         * Fold standalone punctuation tokens onto the preceding word so trailing marks stay attached
+         * ("good", "night", "?" -> "good", "night?"). A token counts as punctuation when it contains
+         * no letters or digits. This keeps the strip clean and makes "night?" a single tappable unit.
+         */
+        fun mergeTrailingPunctuation(words: List<String>): List<String> {
+            val out = ArrayList<String>(words.size)
+            for (w in words) {
+                if (w.isEmpty()) continue
+                if (out.isNotEmpty() && w.none { it.isLetterOrDigit() }) {
+                    out[out.lastIndex] = out.last() + w
+                } else {
+                    out.add(w)
+                }
+            }
+            return out
+        }
     }
 }

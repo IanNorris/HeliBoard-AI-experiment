@@ -395,6 +395,8 @@
     <string name="test_field_clear">Clear</string>
     <!-- Content description of the button that shows/hides the scratch test field in settings -->
     <string name="test_field_toggle">Toggle test field</string>
+    <!-- Dim hint shown in the multi-word completion strip when there are no suggestions yet -->
+    <string name="completion_strip_placeholder">Suggestions will appear here</string>
     <!-- Title of the setting to set clipboard toolbar keys -->
     <string name="clipboard_toolbar_keys">Select clipboard toolbar keys</string>
     <!-- Title of the setting to set pinned toolbar keys -->
