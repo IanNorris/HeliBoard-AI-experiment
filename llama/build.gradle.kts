@@ -23,7 +23,8 @@ android {
         }
         externalNativeBuild {
             cmake {
-                cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti")
+                cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti", "-O3", "-DNDEBUG")
+                cFlags += listOf("-O3", "-DNDEBUG")
                 arguments += listOf(
                     "-DANDROID_STL=c++_static",   // self-contained JNI lib; avoids libc++_shared duplication with :app
                     "-DGGML_NATIVE=OFF",          // required for cross-compile (no host -march detection)
@@ -35,6 +36,11 @@ android {
                     "-DLLAMA_BUILD_TESTS=OFF",
                     "-DLLAMA_BUILD_SERVER=OFF",
                     "-DLLAMA_BUILD_TOOLS=OFF",
+                    // AGP forces CMAKE_BUILD_TYPE=Debug for the app's debug variant, which otherwise
+                    // compiles ggml/llama.cpp at -O0 (10x+ slower). The _DEBUG config flags are emitted
+                    // LAST by CMake, so overriding them guarantees the native code stays optimized.
+                    "-DCMAKE_C_FLAGS_DEBUG=-O3 -DNDEBUG -g",
+                    "-DCMAKE_CXX_FLAGS_DEBUG=-O3 -DNDEBUG -g",
                 )
             }
         }
