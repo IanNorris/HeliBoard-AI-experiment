@@ -373,6 +373,12 @@
     <string name="close_history" tools:keep="@string/close_history">Close clipboard history</string>
     <string name="emoji" tools:keep="@string/emoji">Emoji</string>
     <string name="floating" tools:keep="@string/floating">Floating Keyboard</string>
+    <!-- Content description of the button that shows/hides the scratch test field in settings -->
+    <string name="test_field_toggle">Toggle test field</string>
+    <!-- Placeholder text inside the settings scratch test field -->
+    <string name="test_field_placeholder">Type here to test the keyboard…</string>
+    <!-- Content description of the button that clears the settings scratch test field -->
+    <string name="test_field_clear">Clear test field</string>
     <!-- Title of the setting to set clipboard toolbar keys -->
     <string name="clipboard_toolbar_keys">Select clipboard toolbar keys</string>
     <!-- Title of the setting to set pinned toolbar keys -->
