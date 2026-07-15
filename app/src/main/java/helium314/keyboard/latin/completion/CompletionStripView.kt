@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import helium314.keyboard.latin.R
 import helium314.keyboard.latin.common.ColorType
 import helium314.keyboard.latin.settings.Settings
 
@@ -38,6 +39,9 @@ class CompletionStripView @JvmOverloads constructor(
 
     var listener: Listener? = null
 
+    /** Height of one suggestion row; the strip reserves [MAX_ROWS] of these so all candidates show. */
+    private val rowHeight = resources.getDimensionPixelSize(R.dimen.config_suggestions_strip_height)
+
     private val rows = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         layoutParams = ViewGroup.LayoutParams(
@@ -50,6 +54,13 @@ class CompletionStripView @JvmOverloads constructor(
         isFillViewport = true
         addView(rows)
         Settings.getValues().mColors.setBackground(this, ColorType.STRIP_BACKGROUND)
+    }
+
+    // Reserve a stable height of MAX_ROWS rows so all generated candidates are visible (the strip
+    // stacks them vertically) and the IME window doesn't jitter as candidate counts change.
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val h = rowHeight * MAX_ROWS
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
     }
 
     /**
@@ -97,4 +108,9 @@ class CompletionStripView @JvmOverloads constructor(
 
     private fun dp(value: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
+
+    companion object {
+        /** Number of suggestion rows the strip reserves and shows. */
+        const val MAX_ROWS = 3
+    }
 }
