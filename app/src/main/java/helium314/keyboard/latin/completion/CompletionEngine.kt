@@ -25,6 +25,7 @@ class CompletionEngine @JvmOverloads constructor(
 ) {
     private var pool: List<CompletionCandidate> = emptyList()
     private var poolContext: String? = null
+    private var poolPrefix: String = ""
     private val epoch = AtomicInteger(0)
 
     /** The epoch a generation should be tagged with; compare against this to drop stale results. */
@@ -44,6 +45,11 @@ class CompletionEngine @JvmOverloads constructor(
     fun onPrefixChanged(leftContext: String, prefix: String): List<CompletionCandidate>? {
         synchronized(this) {
             if (leftContext != poolContext) return null
+            // The pool was generated for poolPrefix (the in-progress word at generation time). It is
+            // only valid for prefixes that EXTEND it: e.g. a pool generated for "ti" (candidates like
+            // "time is it") still serves "tim"/"time", but "t" or a divergent prefix must regenerate,
+            // otherwise a mid-word pool would be served stale as the user edits the word.
+            if (!prefix.startsWith(poolPrefix)) return null
         }
         val filtered = visibleCandidates(prefix)
         return filtered.ifEmpty { null }
@@ -63,6 +69,7 @@ class CompletionEngine @JvmOverloads constructor(
             if (epoch.get() == startEpoch) {
                 pool = generated
                 poolContext = leftContext
+                poolPrefix = prefix
             }
         }
         return GenerationResult(startEpoch, visibleCandidates(prefix))
@@ -84,6 +91,7 @@ class CompletionEngine @JvmOverloads constructor(
         epoch.incrementAndGet()
         pool = emptyList()
         poolContext = null
+        poolPrefix = ""
     }
 
     /** Result of a [regenerate], tagged with the epoch it was produced under. */

@@ -69,8 +69,15 @@ jlong nativeLoad(JNIEnv* env, jobject, jstring jpath, jint n_ctx, jint n_threads
     llama_context* ctx = llama_init_from_model(model, cp);
     if (!ctx) { LOGE("context init failed"); llama_model_free(model); return 0; }
 
+    // Light sampling (not greedy): a repetition penalty + top-k/top-p + low temperature. Greedy on a
+    // small base model produces repetition loops ("greasy, greasy, greasy") and robotic text; this
+    // keeps output coherent but natural. Params are conservative for keyboard-appropriate stability.
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(/*last_n*/ 64, /*repeat*/ 1.3f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.92f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.4f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     Session* s = new Session();
     s->model = model; s->ctx = ctx; s->sampler = smpl;
@@ -93,6 +100,7 @@ jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint
 
     // fresh, independent completion (no leakage between keystrokes)
     llama_memory_clear(llama_get_memory(s->ctx), true);
+    llama_sampler_reset(s->sampler);  // clear penalty history so each completion is independent
 
     // tokenize as raw continuation: add_special=true lets the model add BOS only if it needs it;
     // parse_special=false so user text is never interpreted as control tokens (no chat template)

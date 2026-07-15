@@ -71,6 +71,18 @@ class CompletionEngineTest {
     }
 
     @Test
+    fun engine_midWordPoolServesExtendingPrefixButRegeneratesOnDivergence() {
+        val engine = CompletionEngine(StubCompletionProvider(), maxCandidates = 3)
+        val ctx = "Yeah, I had a "
+        // generate a pool for prefix "g"
+        engine.regenerate(ctx, "g")
+        // extending to "go" may fast-serve from the pool (or return null if nothing matches)
+        // but shrinking/diverging to a NON-extending prefix must force regeneration (null)
+        assertNull(engine.onPrefixChanged(ctx, "b"))   // "b" does not start with "g" -> regenerate
+        assertNull(engine.onPrefixChanged(ctx, ""))    // "" does not start with "g" -> regenerate
+    }
+
+    @Test
     fun engine_contextChangeRequestsRegeneration() {
         val engine = CompletionEngine(StubCompletionProvider())
         engine.regenerate("Yeah, I had a ", "g")
