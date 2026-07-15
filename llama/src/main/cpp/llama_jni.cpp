@@ -6,7 +6,9 @@
 // blocking completion at a time and must only be called from a single worker thread.
 #include <jni.h>
 #include <android/log.h>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -18,6 +20,7 @@
 #define LOG_TAG "llama_jni"
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 
 namespace {
 
@@ -84,35 +87,75 @@ jlong nativeLoad(JNIEnv* env, jobject, jstring jpath, jint n_ctx, jint n_threads
 // candidate: a low temp gives a "safe" pick, higher temps give diverse alternatives.
 static llama_sampler* build_sampler(float temp, uint32_t seed) {
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    // Repetition penalty on GENERATED tokens only (llama only accept()s sampled tokens), kept mild
+    // so it curbs loops without pushing the model into thesaurus/"encyclopedia" phrasing.
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(/*last_n*/ 64, /*repeat*/ 1.1f, 0.0f, 0.0f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.05f, 1));
+    // min_p is the honest low-probability cap ("cap the log probs"): keep only tokens with
+    // P >= 0.10 * P_max (a ~2.3 nat gap). Raised from 0.05 to suppress low-confidence junk at the
+    // source. top_p is intentionally dropped (redundant with min_p; small models degrade when
+    // top_k/top_p/min_p are stacked). A modest top_k guards the tail.
+    llama_sampler_chain_add(smpl, llama_sampler_init_min_p(0.10f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(temp));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
     return smpl;
 }
 
-// Generate one short continuation of an already-tokenized prompt using the given sampler.
+// Raw-model log-probability of [id] given the current logits at position -1 (the ones that were
+// just used to sample). Uses the UNMODIFIED model logits (not the sampler-adjusted distribution) so
+// the score reflects the model's genuine confidence, independent of temperature/penalties. Cheap:
+// one softmax pass over the vocab, only for tokens we actually generate.
+static float token_logprob(Session* s, llama_token id) {
+    const float* logits = llama_get_logits_ith(s->ctx, -1);
+    if (!logits) return -100.0f;
+    const int n_vocab = llama_vocab_n_tokens(s->vocab);
+    if (id < 0 || id >= n_vocab) return -100.0f;
+    float maxl = logits[0];
+    for (int i = 1; i < n_vocab; ++i) if (logits[i] > maxl) maxl = logits[i];
+    double sumexp = 0.0;
+    for (int i = 0; i < n_vocab; ++i) sumexp += std::exp((double)(logits[i] - maxl));
+    return (float)((logits[id] - maxl) - std::log(sumexp));
+}
+
+// Generate one short continuation of an already-tokenized prompt using the given sampler. If
+// [outScore] is non-null it receives the candidate's confidence: the mean over words of the summed
+// per-token raw-model logprob (length-invariant, so short and long candidates compare fairly, and
+// tokenizer fragmentation within a word doesn't distort it). An empty generation scores very low.
 static std::string generate_one(Session* s, const std::vector<llama_token>& toks,
-                                llama_sampler* smpl, int maxTokens) {
+                                llama_sampler* smpl, int maxTokens, float* outScore = nullptr) {
     llama_memory_clear(llama_get_memory(s->ctx), true);
     llama_batch batch = llama_batch_get_one(const_cast<llama_token*>(toks.data()), (int32_t) toks.size());
-    if (llama_decode(s->ctx, batch)) { LOGW("prompt decode failed"); return ""; }
+    if (llama_decode(s->ctx, batch)) { LOGW("prompt decode failed"); if (outScore) *outScore = -100.0f; return ""; }
 
     std::string out;
+    double wordSum = 0.0;   // running logprob sum of the current word
+    double totalWordLogprob = 0.0;
+    int    wordCount = 0;
+    bool   inWord = false;
     for (int i = 0; i < maxTokens; ++i) {
         llama_token id = llama_sampler_sample(smpl, s->ctx, -1);
         if (llama_vocab_is_eog(s->vocab, id)) break;
+        const float lp = token_logprob(s, id);  // read BEFORE the next decode overwrites the logits
         char buf[256];
         int m = llama_token_to_piece(s->vocab, id, buf, sizeof(buf), 0, false);
         if (m < 0) break;
         std::string piece(buf, m);
         if (piece.find('\n') != std::string::npos || piece.find('\r') != std::string::npos) break;
+        // a new word starts when the piece begins with a space (or on the very first token)
+        const bool newWord = !inWord || (!piece.empty() && piece[0] == ' ');
+        if (newWord) {
+            if (inWord) { totalWordLogprob += wordSum; wordCount++; }
+            wordSum = lp;
+            inWord = true;
+        } else {
+            wordSum += lp;
+        }
         out += piece;
         llama_batch step = llama_batch_get_one(&id, 1);
         if (llama_decode(s->ctx, step)) break;
     }
+    if (inWord) { totalWordLogprob += wordSum; wordCount++; }
+    if (outScore) *outScore = wordCount > 0 ? (float)(totalWordLogprob / wordCount) : -100.0f;
     return out;
 }
 
@@ -149,8 +192,10 @@ jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint
     return env->NewStringUTF(out.c_str());
 }
 
-// Generate [count] diverse short continuations, newline-separated. Candidate 0 uses a low
-// temperature (safe pick); the rest use a higher temperature with distinct seeds for variety.
+// Generate [count] diverse short continuations. Output is one candidate per line, each formatted as
+// "<score>\t<text>" where score is the mean-per-word logprob confidence (parsed on the Kotlin side
+// for low-confidence suppression and reranking). Candidate 0 is a low-temperature "safe" pick; the
+// rest use a moderate temperature with distinct seeds for variety.
 jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens, jint count) {
     Session* s = lookup((int64_t) handle);
     if (!s) return env->NewStringUTF("");
@@ -166,11 +211,18 @@ jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt,
 
     std::string result;
     for (int i = 0; i < n; ++i) {
-        float temp = (i == 0) ? 0.3f : 0.7f;
+        float temp = (i == 0) ? 0.3f : 0.6f;
         llama_sampler* smpl = build_sampler(temp, (uint32_t) (1234 + i));
-        std::string cand = generate_one(s, toks, smpl, limit);
+        float score = -100.0f;
+        std::string cand = generate_one(s, toks, smpl, limit, &score);
         llama_sampler_free(smpl);
+        // Score-only diagnostic (no user-derived text) to calibrate the suppression floor from logs.
+        LOGI("cand[%d] score=%.3f words=%d", i, score,
+             (int) std::count(cand.begin(), cand.end(), ' ') + (cand.empty() ? 0 : 1));
         if (i > 0) result += "\n";
+        char scoreBuf[32];
+        std::snprintf(scoreBuf, sizeof(scoreBuf), "%.4f\t", score);
+        result += scoreBuf;
         result += cand;
     }
     return env->NewStringUTF(result.c_str());

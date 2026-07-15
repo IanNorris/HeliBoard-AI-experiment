@@ -12,6 +12,7 @@ class ModelCompletionProviderTest {
     private class FakeBackend(
         var output: String = "good time last week",
         var outputs: List<String>? = null,
+        var scoredOutputs: List<ScoredCandidate>? = null,
         var failLoad: Boolean = false,
         var failGenerate: Boolean = false,
     ) : InferenceBackend {
@@ -34,6 +35,14 @@ class ModelCompletionProviderTest {
             generateCount++
             if (failGenerate) throw RuntimeException("gen boom")
             return outputs ?: listOf(output)
+        }
+        override fun generateMultiScored(prompt: String, maxTokens: Int, count: Int): List<ScoredCandidate> {
+            scoredOutputs?.let {
+                generateCount++
+                if (failGenerate) throw RuntimeException("gen boom")
+                return it
+            }
+            return super.generateMultiScored(prompt, maxTokens, count)
         }
         override fun close() { closeCount++; loaded = false }
     }
@@ -159,5 +168,43 @@ class ModelCompletionProviderTest {
         val backend = FakeBackend(output = "   \n  ")
         val provider = ModelCompletionProvider(backend, { "/models/x.task" })
         assertTrue(provider.generate(ctx(), 3).isEmpty())
+    }
+
+    @Test
+    fun generate_suppressesCandidatesBelowConfidenceFloor() {
+        // "31890765" is confident-looking to a naive parser but scores far below the floor -> dropped
+        val backend = FakeBackend(scoredOutputs = listOf(
+            ScoredCandidate("good time last week", -1.2f),
+            ScoredCandidate("31890765", -9.0f),
+            ScoredCandidate("great night out", -2.0f),
+        ))
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        val result = provider.generate(ctx(), max = 3)
+        assertEquals(2, result.size)
+        assertFalse(result.any { it.firstWord == "31890765" })
+    }
+
+    @Test
+    fun generate_suppressesCandidatesFarWorseThanBest() {
+        // within the floor, but the third is >RELATIVE_GAP (3.0) worse than the best (-1.0) -> dropped
+        val backend = FakeBackend(scoredOutputs = listOf(
+            ScoredCandidate("good time last week", -1.0f),
+            ScoredCandidate("great night out", -2.5f),
+            ScoredCandidate("odd murky prose", -4.5f),
+        ))
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        val result = provider.generate(ctx(), max = 3)
+        assertEquals(2, result.size)
+        assertFalse(result.any { it.firstWord == "odd" })
+    }
+
+    @Test
+    fun generate_allLowConfidence_returnsEmpty() {
+        val backend = FakeBackend(scoredOutputs = listOf(
+            ScoredCandidate("random junk here", -8.0f),
+            ScoredCandidate("31890765", -9.5f),
+        ))
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        assertTrue(provider.generate(ctx(), max = 3).isEmpty())
     }
 }

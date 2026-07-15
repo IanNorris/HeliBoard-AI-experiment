@@ -35,6 +35,23 @@ class ModelCompletionProvider @JvmOverloads constructor(
     private companion object {
         const val OVERSAMPLE = 5   // generate this many, dedupe down to the requested count
         const val MAX_WORDS = 4    // keyboard-appropriate short continuations
+        // Low-confidence suppression thresholds on the mean-per-word logprob score. Conservative:
+        // they only kill genuinely unlikely output (e.g. a bare random number) rather than trimming
+        // plausible-but-unusual phrasing. Tune on-device from logged scores.
+        const val CONFIDENCE_FLOOR = -5.0f   // absolute floor; below this a candidate is junk
+        const val RELATIVE_GAP = 3.0f        // drop candidates far worse than the best in the batch
+    }
+
+    /**
+     * Drop low-confidence candidates: anything below [CONFIDENCE_FLOOR] outright, and anything more
+     * than [RELATIVE_GAP] nats/word worse than the best candidate in the batch. The effect is that a
+     * weak context yields fewer (or zero) suggestions instead of confidently-wrong junk.
+     */
+    private fun suppressLowConfidence(scored: List<ScoredCandidate>): List<ScoredCandidate> {
+        val aboveFloor = scored.filter { it.score.isFinite() && it.score >= CONFIDENCE_FLOOR }
+        if (aboveFloor.isEmpty()) return emptyList()
+        val best = aboveFloor.maxOf { it.score }
+        return aboveFloor.filter { it.score >= best - RELATIVE_GAP }
     }
 
     /** Whether a model is installed and the backend is ready (or can be made ready). */
@@ -46,12 +63,14 @@ class ModelCompletionProvider @JvmOverloads constructor(
         if (context.leftContext.isBlank() && partial.isEmpty()) return emptyList()
         if (!ensureLoaded()) return emptyList()
 
-        // Whole-word mode (just typed a space): generate several diverse short continuations.
+        // Whole-word mode (just typed a space): generate several diverse short continuations, then
+        // suppress the low-confidence ones so a weak context shows fewer/zero rather than junk.
         if (partial.isEmpty()) {
             val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
-            val raws = try { backend.generateMulti(prompt, maxTokens, OVERSAMPLE) }
+            val scored = try { backend.generateMultiScored(prompt, maxTokens, OVERSAMPLE) }
                 catch (e: Exception) { return emptyList() }
-            val candidates = raws.mapNotNull { ResponseParser.parse(it, promptEcho = prompt, maxWords = MAX_WORDS) }
+            val candidates = suppressLowConfidence(scored)
+                .mapNotNull { ResponseParser.parse(it.text, promptEcho = prompt, maxWords = MAX_WORDS) }
             return dedupeDistinct(candidates, max)
         }
 
@@ -74,11 +93,13 @@ class ModelCompletionProvider @JvmOverloads constructor(
             if (candidates.isNotEmpty()) return dedupeDistinct(candidates, max)
         }
 
-        // No dictionary completion available: best-effort raw-fragment continuation.
+        // No dictionary completion available: best-effort raw-fragment continuation, still suppressing
+        // low-confidence output.
         val prompt = PromptBuilder.build(context.leftContext + partial) ?: return emptyList()
-        val raws = try { backend.generateMulti(prompt, maxTokens, OVERSAMPLE) }
+        val scored = try { backend.generateMultiScored(prompt, maxTokens, OVERSAMPLE) }
             catch (e: Exception) { return emptyList() }
-        val candidates = raws.mapNotNull { raw ->
+        val candidates = suppressLowConfidence(scored).mapNotNull { sc ->
+            val raw = sc.text
             if (raw.isEmpty() || raw[0].isWhitespace()) null
             else ResponseParser.parse(partial + raw, maxWords = MAX_WORDS)
                 ?.takeIf { it.firstWord.startsWith(partial, ignoreCase = true) }

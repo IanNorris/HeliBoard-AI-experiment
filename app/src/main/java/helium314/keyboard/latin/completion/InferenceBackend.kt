@@ -29,6 +29,17 @@ interface InferenceBackend {
     fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<String> =
         listOf(generate(prompt, maxTokens)).filter { it.isNotEmpty() }
 
+    /**
+     * Like [generateMulti] but each candidate carries a confidence score (mean-per-word logprob;
+     * higher is better) used for low-confidence suppression and reranking. The default wraps
+     * [generateMulti] with a neutral score, so backends without real scores (MediaPipe) still work.
+     */
+    fun generateMultiScored(prompt: String, maxTokens: Int, count: Int): List<ScoredCandidate> =
+        generateMulti(prompt, maxTokens, count).map { ScoredCandidate(it, 0f) }
+
     /** Release native resources. Safe to call repeatedly; a later [load] can re-init. */
     fun close()
 }
+
+/** A raw generated continuation together with its model-confidence [score] (higher is better). */
+data class ScoredCandidate(val text: String, val score: Float)

@@ -29,12 +29,26 @@ class LlamaBackend(
         return LlamaNative.generate(h, prompt, maxTokens)
     }
 
-    /** Generate [count] diverse short continuations for [prompt]. */
-    fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<String> {
+    /** A generated continuation with its confidence score (mean-per-word logprob; higher = better). */
+    data class ScoredCompletion(val text: String, val score: Float)
+
+    /** Generate [count] diverse short continuations for [prompt], each with a confidence score. */
+    fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<ScoredCompletion> {
         val h = handle
         if (h == 0L) return emptyList()
         return LlamaNative.generateMulti(h, prompt, maxTokens, count)
-            .split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            .split('\n')
+            .mapNotNull { line ->
+                if (line.isBlank()) return@mapNotNull null
+                val tab = line.indexOf('\t')
+                if (tab < 0) {
+                    ScoredCompletion(line.trim(), Float.NEGATIVE_INFINITY)
+                } else {
+                    val score = line.substring(0, tab).trim().toFloatOrNull() ?: Float.NEGATIVE_INFINITY
+                    val text = line.substring(tab + 1).trim()
+                    if (text.isEmpty()) null else ScoredCompletion(text, score)
+                }
+            }
     }
 
     fun close() {
