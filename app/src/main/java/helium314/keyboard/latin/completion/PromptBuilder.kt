@@ -12,7 +12,10 @@ package helium314.keyboard.latin.completion
  * Only a bounded, recent window is used (never the whole editor buffer) for latency and privacy.
  */
 object PromptBuilder {
-    const val DEFAULT_MAX_CHARS = 512
+    // Keep the prompt well under a 128-token context budget (seq128 models) once the generated
+    // continuation is added: ~256 chars is roughly 60-70 tokens of recent context, which is plenty
+    // for next-phrase prediction on a keyboard and leaves headroom for the output.
+    const val DEFAULT_MAX_CHARS = 256
 
     /**
      * @param leftContext committed text before the in-progress word (already prefix-stripped by the engine)
