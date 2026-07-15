@@ -25,6 +25,18 @@ class ModelRepository private constructor(context: Context) {
             return (id?.let { ModelCatalog.byId(it) }) ?: ModelCatalog.default
         }
 
+    /**
+     * The model actually used for inference: the selected one if it is installed, otherwise the
+     * first installed model in the catalog (so a stale/unavailable selection can't silently disable
+     * completion when a different model has been imported), else the selected one.
+     */
+    val effectiveModel: ModelInfo
+        get() {
+            val selected = model
+            if (storage.isInstalled(selected)) return selected
+            return ModelCatalog.MODELS.firstOrNull { storage.isInstalled(it) } ?: selected
+        }
+
     /** All models this build offers (for a picker). */
     val availableModels: List<ModelInfo> get() = ModelCatalog.MODELS
 
@@ -36,8 +48,8 @@ class ModelRepository private constructor(context: Context) {
     /** Whether the device meets the minimum API for on-device inference. */
     val isDeviceSupported: Boolean get() = Build.VERSION.SDK_INT >= model.minSdk
 
-    /** Absolute path of the installed model, or null if not downloaded. */
-    fun installedModelPath(): String? = storage.installedPath(model)
+    /** Absolute path of the installed model actually used for inference, or null if none installed. */
+    fun installedModelPath(): String? = storage.installedPath(effectiveModel)
 
     fun isInstalled(): Boolean = storage.isInstalled(model)
 

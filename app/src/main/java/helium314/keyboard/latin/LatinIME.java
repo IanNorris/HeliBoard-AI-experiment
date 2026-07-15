@@ -145,6 +145,7 @@ public class LatinIME extends InputMethodService implements
     private helium314.keyboard.latin.completion.ModelCompletionProvider mModelCompletionProvider;
     private java.util.concurrent.ExecutorService mCompletionExecutor;
     private volatile boolean mCompletionGenerating = false;
+    private String mCompletionModelId = null;
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -856,6 +857,7 @@ public class LatinIME extends InputMethodService implements
 
     private void onStartInputInternal(final EditorInfo editorInfo, final boolean restarting) {
         super.onStartInput(editorInfo, restarting);
+        reinitCompletionEngineIfModelChanged();
 
         final RichInputMethodSubtype subtypeForApp = editorInfo == null
             ? null :
@@ -1554,6 +1556,7 @@ public class LatinIME extends InputMethodService implements
     private void initCompletionEngine() {
         final helium314.keyboard.latin.completion.ModelRepository repo =
                 helium314.keyboard.latin.completion.ModelRepository.get(this);
+        mCompletionModelId = repo.getEffectiveModel().getId();
         helium314.keyboard.latin.completion.CompletionProvider provider =
                 new helium314.keyboard.latin.completion.StubCompletionProvider();
         if (repo.isDeviceSupported()) {
@@ -1571,13 +1574,25 @@ public class LatinIME extends InputMethodService implements
             }
         }
         mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider);
-        mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        if (mCompletionExecutor == null)
+            mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
     }
 
-    /** Pick the inference backend matching the default model's runtime (llama.cpp for GGUF base models). */
+    /** Rebuild the completion engine if the effective (installed/selected) model has changed. */
+    private void reinitCompletionEngineIfModelChanged() {
+        final helium314.keyboard.latin.completion.ModelRepository repo =
+                helium314.keyboard.latin.completion.ModelRepository.get(this);
+        final String current = repo.getEffectiveModel().getId();
+        if (current == null ? mCompletionModelId == null : current.equals(mCompletionModelId)) return;
+        if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
+        mModelCompletionProvider = null;
+        initCompletionEngine();
+    }
+
+    /** Pick the inference backend matching the effective (installed) model's runtime. */
     private helium314.keyboard.latin.completion.InferenceBackend createInferenceBackend(
             final helium314.keyboard.latin.completion.ModelRepository repo) {
-        final helium314.keyboard.latin.completion.ModelInfo.Runtime runtime = repo.getModel().getRuntime();
+        final helium314.keyboard.latin.completion.ModelInfo.Runtime runtime = repo.getEffectiveModel().getRuntime();
         if (runtime == helium314.keyboard.latin.completion.ModelInfo.Runtime.LLAMA_CPP) {
             final helium314.keyboard.latin.completion.LlamaCppInferenceBackend llama =
                     new helium314.keyboard.latin.completion.LlamaCppInferenceBackend();
