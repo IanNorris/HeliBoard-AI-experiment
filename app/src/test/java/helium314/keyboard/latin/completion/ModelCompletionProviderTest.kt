@@ -91,10 +91,13 @@ class ModelCompletionProviderTest {
 
     @Test
     fun generate_capsCandidatesToMaxWords() {
-        val backend = FakeBackend(output = "one two three four five six")
+        val backend = FakeBackend(output = "one two three four five six seven eight nine ten")
         val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
         val result = provider.generate(ctx(), max = 3)
-        assertEquals(listOf("one", "two", "three", "four"), result[0].words) // capped at 4 words
+        assertEquals(
+            listOf("one", "two", "three", "four", "five", "six", "seven", "eight"),
+            result[0].words
+        ) // capped at MAX_WORDS (8)
     }
 
     @Test

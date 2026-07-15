@@ -90,6 +90,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_SHOW_SUGGESTIONS = "show_suggestions";
     public static final String PREF_ENABLE_MULTIWORD_COMPLETION = "enable_multiword_completion";
     public static final String PREF_COMPLETION_USE_NGRAM_CHAIN = "completion_use_ngram_chain";
+    public static final String PREF_COMPLETION_PANEL_EXPANDED = "completion_panel_expanded";
     public static final String PREF_ALWAYS_SHOW_SUGGESTIONS = "always_show_suggestions";
     public static final String PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT = "always_show_suggestions_except_web_text";
     public static final String PREF_KEY_USE_PERSONALIZED_DICTS = "use_personalized_dicts";
@@ -195,6 +196,7 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_ABC_AFTER_CLIP = "abc_after_clip";
     public static final String PREF_ABC_AFTER_SYMBOL_SPACE = "abc_after_symbol_space";
     public static final String PREF_HIDE_BOTTOM_SYMBOL_KEY = "hide_bottom_symbol_key";
+    public static final String PREF_COMMA_NEXT_TO_PERIOD = "comma_next_to_period";
     public static final String PREF_ABC_AFTER_NUMPAD_SPACE = "abc_after_numpad_space";
     public static final String PREF_REMOVE_REDUNDANT_POPUPS = "remove_redundant_popups";
     public static final String PREF_SPACE_BAR_TEXT = "space_bar_text";

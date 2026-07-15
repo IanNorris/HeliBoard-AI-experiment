@@ -20,7 +20,7 @@ package helium314.keyboard.latin.completion
 class ModelCompletionProvider @JvmOverloads constructor(
     private val backend: InferenceBackend,
     private val modelPathProvider: ModelPathProvider,
-    private val maxTokens: Int = 8,
+    private val maxTokens: Int = 14,
 ) : CompletionProvider {
 
     /** Supplies the installed model path (or null if absent). A SAM type so Java can pass a method ref. */
@@ -34,7 +34,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
 
     private companion object {
         const val OVERSAMPLE = 5   // generate this many, dedupe down to the requested count
-        const val MAX_WORDS = 4    // keyboard-appropriate short continuations
+        const val MAX_WORDS = 8    // continuation length; the panel wraps long lines onto more rows
         // Low-confidence suppression thresholds on the mean-per-word logprob score. Conservative:
         // they only kill genuinely unlikely output (e.g. a bare random number) rather than trimming
         // plausible-but-unusual phrasing. Tune on-device from logged scores.

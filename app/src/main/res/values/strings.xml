@@ -411,6 +411,10 @@
     <string name="test_field_toggle">Toggle test field</string>
     <!-- Dim hint shown in the multi-word completion strip when there are no suggestions yet -->
     <string name="completion_strip_placeholder">Suggestions will appear here</string>
+    <!-- Content description of the button that expands the multi-word completion panel -->
+    <string name="completion_panel_expand">Expand suggestions</string>
+    <!-- Content description of the button that collapses the multi-word completion panel -->
+    <string name="completion_panel_collapse">Collapse suggestions</string>
     <!-- Title of the setting to set clipboard toolbar keys -->
     <string name="clipboard_toolbar_keys">Select clipboard toolbar keys</string>
     <!-- Title of the setting to set pinned toolbar keys -->
@@ -437,6 +441,10 @@
     <string name="hide_bottom_symbol_key">Hide symbol key on bottom row</string>
     <!-- Description for "hide_bottom_symbol_key" option. -->
     <string name="hide_bottom_symbol_key_summary">Remove the ?123 key from the bottom row (widening the space bar). Add the \"Symbols\" key to the toolbar to still reach symbols</string>
+    <!-- Title of the setting to move the comma key next to the period key. -->
+    <string name="comma_next_to_period">Comma next to period</string>
+    <!-- Description for "comma_next_to_period" option. -->
+    <string name="comma_next_to_period_summary">Place the comma key immediately left of the period, both to the right of the space bar</string>
     <!-- Title of the setting for reduced distance between keys, todo: not used any more -->
     <string name="prefs_narrow_key_gaps">Narrow key gaps</string>
     <!-- Title of the setting for setting distance between keys -->

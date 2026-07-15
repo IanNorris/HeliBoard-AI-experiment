@@ -77,6 +77,7 @@ object Defaults {
     const val PREF_SHOW_SUGGESTIONS = true
     const val PREF_ENABLE_MULTIWORD_COMPLETION = false
     const val PREF_COMPLETION_USE_NGRAM_CHAIN = false
+    const val PREF_COMPLETION_PANEL_EXPANDED = false
     const val PREF_ALWAYS_SHOW_SUGGESTIONS = false
     const val PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT = true
     const val PREF_KEY_USE_PERSONALIZED_DICTS = true
@@ -187,6 +188,7 @@ object Defaults {
     const val PREF_ABC_AFTER_CLIP = false
     const val PREF_ABC_AFTER_SYMBOL_SPACE = true
     const val PREF_HIDE_BOTTOM_SYMBOL_KEY = false
+    const val PREF_COMMA_NEXT_TO_PERIOD = false
     const val PREF_ABC_AFTER_NUMPAD_SPACE = false
     const val PREF_REMOVE_REDUNDANT_POPUPS = false
     const val PREF_SPACE_BAR_TEXT = ""

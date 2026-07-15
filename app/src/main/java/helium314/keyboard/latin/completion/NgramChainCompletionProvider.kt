@@ -20,7 +20,7 @@ fun interface NextWordPredictor {
  */
 class NgramChainCompletionProvider @JvmOverloads constructor(
     private val predictor: NextWordPredictor,
-    private val maxChainWords: Int = 6,
+    private val maxChainWords: Int = 12,
 ) : CompletionProvider {
 
     override val name: String get() = "ngram-chain"
