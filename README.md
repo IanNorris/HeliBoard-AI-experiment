@@ -1,3 +1,18 @@
+# HeliBoard — AI completion experiment (personal fork)
+
+> [!WARNING]
+> **This is a temporary, personal, experimental fork of [HeliBoard](https://github.com/Helium314/HeliBoard), not an official release.**
+>
+> It was created by [@IanNorris](https://github.com/IanNorris) to experiment with AI-driven changes (largely written by an AI coding agent), including:
+> - **Multi-word completion** with two selectable sources: an on-device base LLM (llama.cpp / SmolLM2) and an **n-gram chain** that extends the keyboard's own personalized next-word predictor;
+> - **Low-confidence suggestion suppression**, an embedded **test field in settings**, dynamic **spacebar width**, and other typing tweaks.
+>
+> It is **not production-ready**, is **not affiliated with or endorsed by the HeliBoard project**, may be unstable, and could be deleted or force-pushed at any time. Do not rely on it. For the real thing, use upstream [HeliBoard](https://github.com/Helium314/HeliBoard).
+>
+> Licensing and attribution follow upstream (GPL-3.0-only); see [License](#license) and [Credits](#credits). All original work is HeliBoard's; this fork only adds the experimental changes described above.
+
+---
+
 # HeliBoard
 HeliBoard is a privacy-conscious and customizable open-source keyboard, based on AOSP / OpenBoard.
 Does not use internet permission, and thus is 100% offline.

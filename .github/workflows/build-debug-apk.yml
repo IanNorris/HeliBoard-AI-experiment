@@ -1,6 +1,11 @@
 name: Build debug APK
 
+# Personal experimental fork: build the combined debug APK on every push to the
+# integration/main branches (and on demand). Requires the llama.cpp submodule and
+# the NDK/CMake used by the :llama native module.
 on:
+  push:
+    branches: [ main, integration ]
   workflow_dispatch:
 
 jobs:
@@ -10,12 +15,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Install NDK and CMake for the :llama native module
+        run: |
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "ndk;28.0.13004108" "cmake;3.22.1"
 
       - uses: gradle/actions/setup-gradle@v3
 
