@@ -12,3 +12,9 @@
 # after upgrading to gradle 8, stack traces contain "unknown source"
 -keepattributes SourceFile,LineNumberTable
 -dontobfuscate
+
+# MediaPipe LLM Inference (on-device completion). Uses JNI + AutoValue + protobuf via reflection.
+-keep class com.google.mediapipe.** { *; }
+-keep class mediapipe.** { *; }
+-dontwarn com.google.mediapipe.**
+-dontwarn com.google.auto.value.**
