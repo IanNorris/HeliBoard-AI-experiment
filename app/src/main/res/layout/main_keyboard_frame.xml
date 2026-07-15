@@ -15,7 +15,7 @@
     <helium314.keyboard.latin.completion.CompletionStripView
         android:id="@+id/completion_strip_view"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/config_suggestions_strip_height"
+        android:layout_height="wrap_content"
         android:visibility="gone" />
 
     <include
