@@ -192,6 +192,99 @@ static std::vector<llama_token> tokenize_prompt(Session* s, const std::string& p
     return toks;
 }
 
+// Generate tokens from an already-primed context (logits ready at the current last position).
+// Stops on EOG, newline, [maxTokens], or when [deadline] passes (if [useDeadline]) — on a deadline it
+// truncates to the last complete word so no partial word is shown.
+static std::string decode_generate(Session* s, llama_sampler* smpl, int maxTokens,
+                                   std::chrono::steady_clock::time_point deadline, bool useDeadline,
+                                   float* outScore, int* outGenTokens) {
+    std::string out;
+    size_t lastWordBoundary = 0;
+    double wordSum = 0.0, totalWordLogprob = 0.0;
+    int wordCount = 0, genTokens = 0;
+    bool inWord = false, deadlineHit = false;
+    for (int i = 0; i < maxTokens; ++i) {
+        if (useDeadline && std::chrono::steady_clock::now() >= deadline) { deadlineHit = true; break; }
+        llama_token id = llama_sampler_sample(smpl, s->ctx, -1);
+        if (llama_vocab_is_eog(s->vocab, id)) break;
+        const float lp = token_logprob(s, id);  // read BEFORE the next decode overwrites the logits
+        char buf[256];
+        int m = llama_token_to_piece(s->vocab, id, buf, sizeof(buf), 0, false);
+        if (m < 0) break;
+        std::string piece(buf, m);
+        if (piece.find('\n') != std::string::npos || piece.find('\r') != std::string::npos) break;
+        const bool newWord = !inWord || (!piece.empty() && piece[0] == ' ');
+        if (newWord) {
+            if (inWord) { totalWordLogprob += wordSum; wordCount++; }
+            wordSum = lp;
+            inWord = true;
+            lastWordBoundary = out.size(); // end of the previous complete word
+        } else {
+            wordSum += lp;
+        }
+        out += piece;
+        genTokens++;
+        llama_batch step = llama_batch_get_one(&id, 1);
+        if (llama_decode(s->ctx, step)) break;
+    }
+    if (deadlineHit && inWord) out.resize(lastWordBoundary); // drop the trailing incomplete word
+    if (inWord && !deadlineHit) { totalWordLogprob += wordSum; wordCount++; }
+    if (outScore) *outScore = wordCount > 0 ? (float)(totalWordLogprob / wordCount) : -100.0f;
+    if (outGenTokens) *outGenTokens = genTokens;
+    return out;
+}
+
+struct CandOut { std::string text; float score; int genTokens; long genMs; };
+
+// Generate [n] candidates that SHARE the prompt prefix KV: the prompt is decoded once (the expensive
+// prefill), then for each subsequent candidate only the single last prompt token is re-decoded to
+// recover its logits (reusing the cached prefix) instead of re-encoding the whole prompt. This turns
+// prefill from O(n*P) into ~O(P + n). [budgetMs] (if > 0) is a TOTAL wall-clock budget across all
+// candidates: once it is exceeded no further candidates start, and the in-progress one stops at its
+// last complete word — this is what bounds the "sometimes several seconds" tail. [outPrefillMs]
+// receives the one-time prompt decode time.
+static std::vector<CandOut> generate_multi_shared(Session* s, const std::vector<llama_token>& toks,
+                                                  int n, int maxTokens, long budgetMs, long* outPrefillMs) {
+    using clock = std::chrono::steady_clock;
+    std::vector<CandOut> results;
+    llama_memory_t mem = llama_get_memory(s->ctx);
+    llama_memory_clear(mem, true);
+    const int P = (int) toks.size();
+    if (P == 0) { if (outPrefillMs) *outPrefillMs = 0; return results; }
+
+    const auto start = clock::now();
+    // decode the full prompt ONCE; logits are then at position P-1
+    llama_batch pbatch = llama_batch_get_one(const_cast<llama_token*>(toks.data()), P);
+    if (llama_decode(s->ctx, pbatch)) { if (outPrefillMs) *outPrefillMs = 0; return results; }
+    if (outPrefillMs) *outPrefillMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
+        clock::now() - start).count();
+
+    const bool useBudget = budgetMs > 0;
+    const auto budgetEnd = start + std::chrono::milliseconds(budgetMs);
+    llama_token lastPromptTok = toks[P - 1];
+    for (int i = 0; i < n; ++i) {
+        // stop launching new candidates once the total budget is spent (but always produce >= 1)
+        if (useBudget && i > 0 && clock::now() >= budgetEnd) break;
+        const auto candStart = clock::now();
+        if (i > 0) {
+            // reset to the reusable prefix [0..P-2] and recompute the last-token logits cheaply
+            llama_memory_seq_rm(mem, 0, P - 1, -1);
+            llama_batch lb = llama_batch_get_one(&lastPromptTok, 1);
+            if (llama_decode(s->ctx, lb)) break;
+        }
+        const float temp = (i == 0) ? 0.3f : 0.6f;
+        llama_sampler* smpl = build_sampler(temp, (uint32_t) (1234 + i));
+        float score = -100.0f;
+        int genTokens = 0;
+        std::string text = decode_generate(s, smpl, maxTokens, budgetEnd, useBudget, &score, &genTokens);
+        llama_sampler_free(smpl);
+        const long candMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
+            clock::now() - candStart).count();
+        results.push_back(CandOut{text, score, genTokens, candMs});
+    }
+    return results;
+}
+
 jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens) {
     Session* s = lookup((int64_t) handle);
     if (!s) return env->NewStringUTF("");
@@ -209,13 +302,12 @@ jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint
     return env->NewStringUTF(out.c_str());
 }
 
-// Generate [count] diverse short continuations. Output format (one entry per line):
+// Generate [count] diverse short continuations, reusing the shared prompt-prefix KV and bounded by a
+// total wall-clock [budgetMs] (0 = unbounded). Output format (one entry per line):
 //   line 0: "#STATS\t<promptTokens>\t<prefillMs>\t<totalMs>"
 //   lines 1..N: "<score>\t<genTokens>\t<genMs>\t<text>"
-// score is the mean-per-word logprob confidence. Candidate 0 is a low-temperature "safe" pick; the
-// rest use a moderate temperature with distinct seeds for variety. The extra fields feed the debug
-// panel / stats; the Kotlin parser tolerates the header and the per-candidate timing fields.
-jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens, jint count) {
+jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens,
+                            jint count, jint budgetMs) {
     using clock = std::chrono::steady_clock;
     Session* s = lookup((int64_t) handle);
     if (!s) return env->NewStringUTF("");
@@ -230,32 +322,23 @@ jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt,
     if (toks.empty()) return env->NewStringUTF("");
 
     const auto totalStart = clock::now();
-    long sumPrefillMs = 0;
-    std::string body;
-    for (int i = 0; i < n; ++i) {
-        float temp = (i == 0) ? 0.3f : 0.6f;
-        llama_sampler* smpl = build_sampler(temp, (uint32_t) (1234 + i));
-        float score = -100.0f;
-        int genTokens = 0;
-        long prefillMs = 0;
-        const auto candStart = clock::now();
-        std::string cand = generate_one(s, toks, smpl, limit, &score, &genTokens, &prefillMs);
-        const long candMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
-            clock::now() - candStart).count();
-        llama_sampler_free(smpl);
-        sumPrefillMs += prefillMs;
-        if (i > 0) body += "\n";
-        char lineBuf[64];
-        std::snprintf(lineBuf, sizeof(lineBuf), "%.4f\t%d\t%ld\t", score, genTokens, candMs);
-        body += lineBuf;
-        body += cand;
-    }
+    long prefillMs = 0;
+    std::vector<CandOut> cands = generate_multi_shared(s, toks, n, limit, (long) budgetMs, &prefillMs);
     const long totalMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
         clock::now() - totalStart).count();
 
+    std::string body;
+    for (size_t i = 0; i < cands.size(); ++i) {
+        if (i > 0) body += "\n";
+        char lineBuf[64];
+        std::snprintf(lineBuf, sizeof(lineBuf), "%.4f\t%d\t%ld\t",
+                      cands[i].score, cands[i].genTokens, cands[i].genMs);
+        body += lineBuf;
+        body += cands[i].text;
+    }
     char header[96];
     std::snprintf(header, sizeof(header), "#STATS\t%d\t%ld\t%ld\n",
-                  (int) toks.size(), sumPrefillMs, totalMs);
+                  (int) toks.size(), prefillMs, totalMs);
     std::string result = header;
     result += body;
     return env->NewStringUTF(result.c_str());
@@ -272,7 +355,7 @@ void nativeFree(JNIEnv*, jobject, jlong handle) {
 const JNINativeMethod kMethods[] = {
     {"load",          "(Ljava/lang/String;II)J",                    (void*) nativeLoad},
     {"generate",      "(JLjava/lang/String;I)Ljava/lang/String;",   (void*) nativeGenerate},
-    {"generateMulti", "(JLjava/lang/String;II)Ljava/lang/String;",  (void*) nativeGenerateMulti},
+    {"generateMulti", "(JLjava/lang/String;III)Ljava/lang/String;", (void*) nativeGenerateMulti},
     {"free",          "(J)V",                                        (void*) nativeFree},
 };
 

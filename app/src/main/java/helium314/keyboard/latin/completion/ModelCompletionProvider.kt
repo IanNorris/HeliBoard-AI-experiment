@@ -21,6 +21,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
     private val backend: InferenceBackend,
     private val modelPathProvider: ModelPathProvider,
     private val maxTokens: Int = 14,
+    private val budgetMs: Int = 0,
 ) : CompletionProvider {
 
     /** Supplies the installed model path (or null if absent). A SAM type so Java can pass a method ref. */
@@ -33,7 +34,9 @@ class ModelCompletionProvider @JvmOverloads constructor(
     @Volatile private var loadFailed = false
 
     private companion object {
-        const val OVERSAMPLE = 5   // generate this many, dedupe down to the requested count
+        // Oversample only slightly beyond what we show: each extra candidate costs full decode time,
+        // so 4 (show 3) balances dedup yield against the latency budget (was 5).
+        const val OVERSAMPLE = 4
         const val MAX_WORDS = 8    // continuation length; the panel wraps long lines onto more rows
         const val MIN_WORDS = 2    // prefer multi-word phrases; single words are only used to fill slots
         // Low-confidence suppression thresholds on the mean-per-word logprob score. Conservative:
@@ -68,7 +71,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
         // suppress the low-confidence ones so a weak context shows fewer/zero rather than junk.
         if (partial.isEmpty()) {
             val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
-            val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE) }
+            val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE, budgetMs) }
                 catch (e: Exception) { return emptyList() }
             publishDebug(prompt, scored, stats)
             val candidates = suppressLowConfidence(scored)
@@ -98,7 +101,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
         // No dictionary completion available: best-effort raw-fragment continuation, still suppressing
         // low-confidence output.
         val prompt = PromptBuilder.build(context.leftContext + partial) ?: return emptyList()
-        val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE) }
+        val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE, budgetMs) }
             catch (e: Exception) { return emptyList() }
         publishDebug(prompt, scored, stats)
         val candidates = suppressLowConfidence(scored).mapNotNull { sc ->

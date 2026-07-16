@@ -22,8 +22,8 @@ internal object LlamaNative {
     /** Generate a raw continuation of [prompt] (blocking). Returns model text, possibly empty. */
     external fun generate(handle: Long, prompt: String, maxTokens: Int): String
 
-    /** Generate [count] diverse short continuations, newline-separated. */
-    external fun generateMulti(handle: Long, prompt: String, maxTokens: Int, count: Int): String
+    /** Generate [count] diverse short continuations, bounded by a total wall-clock budget (ms; 0 = unbounded). */
+    external fun generateMulti(handle: Long, prompt: String, maxTokens: Int, count: Int, budgetMs: Int): String
 
     /** Release the model/context for [handle]. Idempotent. */
     external fun free(handle: Long)

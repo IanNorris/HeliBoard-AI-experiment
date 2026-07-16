@@ -39,9 +39,10 @@ interface InferenceBackend {
 
     /**
      * Like [generateMultiScored] but also returns aggregate generation stats (prompt tokens, prefill
-     * vs total time) for the debug panel. Default: candidates with empty stats.
+     * vs total time) for the debug panel. [budgetMs] is a total wall-clock budget across candidates
+     * (0 = unbounded), used to bound the latency tail. Default: candidates with empty stats.
      */
-    fun generateMultiScoredWithStats(prompt: String, maxTokens: Int, count: Int): Pair<List<ScoredCandidate>, GenerationStats> =
+    fun generateMultiScoredWithStats(prompt: String, maxTokens: Int, count: Int, budgetMs: Int = 0): Pair<List<ScoredCandidate>, GenerationStats> =
         generateMultiScored(prompt, maxTokens, count) to GenerationStats()
 
     /** Release native resources. Safe to call repeatedly; a later [load] can re-init. */

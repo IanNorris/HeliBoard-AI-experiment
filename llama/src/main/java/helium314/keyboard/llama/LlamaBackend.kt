@@ -38,11 +38,12 @@ class LlamaBackend(
     /** Candidates plus aggregate stats for one [generateMulti] call. */
     data class MultiResult(val candidates: List<ScoredCompletion>, val stats: GenStats)
 
-    /** Generate [count] diverse short continuations for [prompt], with scores and timing stats. */
-    fun generateMulti(prompt: String, maxTokens: Int, count: Int): MultiResult {
+    /** Generate [count] diverse short continuations for [prompt], with scores and timing stats.
+     *  [budgetMs] is a total wall-clock budget across candidates (0 = unbounded). */
+    fun generateMulti(prompt: String, maxTokens: Int, count: Int, budgetMs: Int = 0): MultiResult {
         val h = handle
         if (h == 0L) return MultiResult(emptyList(), GenStats(0, 0, 0))
-        val raw = LlamaNative.generateMulti(h, prompt, maxTokens, count)
+        val raw = LlamaNative.generateMulti(h, prompt, maxTokens, count, budgetMs)
         var stats = GenStats(0, 0, 0)
         val candidates = ArrayList<ScoredCompletion>()
         for (line in raw.split('\n')) {

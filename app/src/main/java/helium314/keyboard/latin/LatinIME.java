@@ -153,6 +153,8 @@ public class LatinIME extends InputMethodService implements
     private java.util.List<String> mPendingGenDictWords = java.util.Collections.emptyList();
     private String mCompletionModelId = null;
     private boolean mCompletionUseNgramChain = false;
+    // Generous default total generation budget (ms) to bound the latency tail; made configurable later.
+    private static final int COMPLETION_BUDGET_MS = 2500;
     private SuggestedWords mLastSuggestedWordsForCompletion = SuggestedWords.getEmptyInstance();
 
     private RichInputMethodManager mRichImm;
@@ -1591,7 +1593,7 @@ public class LatinIME extends InputMethodService implements
                         createInferenceBackend(repo);
                 if (backend != null) {
                     mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
-                            backend, repo::installedModelPath);
+                            backend, repo::installedModelPath, 14, COMPLETION_BUDGET_MS);
                     provider = mModelCompletionProvider;
                 }
             } catch (Throwable t) {
