@@ -82,6 +82,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         fun removeSuggestion(word: String?)
         fun removeExternalSuggestions()
         fun onSwipeDownOnToolbar()
+        fun onToggleCompletionPanel()
     }
 
     private val moreSuggestionsContainer: View
@@ -120,6 +121,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private val pinnedKeys: ViewGroup = findViewById(R.id.pinned_keys)
     private val suggestionsStrip: ViewGroup = findViewById(R.id.suggestions_strip)
     private val toolbarExpandKey = findViewById<ImageButton>(R.id.suggestions_strip_toolbar_key)
+    private val completionPanelToggleKey = findViewById<ImageButton>(R.id.completion_panel_toggle_key)
     private val incognitoIcon = KeyboardIconsSet.instance.getNewDrawable(ToolbarKey.INCOGNITO.name, context)
     private val toolbarArrowIcon = KeyboardIconsSet.instance.getNewDrawable(KeyboardIconsSet.NAME_TOOLBAR_KEY, context)
     private val defaultToolbarBackground: Drawable = toolbarExpandKey.background
@@ -143,6 +145,14 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         colors.setBackground(toolbarExpandKey, ColorType.STRIP_BACKGROUND) // necessary because background is re-used for defaultToolbarBackground
         colors.setColor(toolbarExpandKey, ColorType.TOOL_BAR_EXPAND_KEY)
         colors.setColor(toolbarExpandKey.background, ColorType.TOOL_BAR_EXPAND_KEY_BACKGROUND)
+
+        // completion panel show/hide toggle (sits to the left of the toolbar expand key)
+        completionPanelToggleKey.layoutParams.height = toolbarHeight
+        completionPanelToggleKey.layoutParams.width = toolbarHeight // square, like the expand key
+        colors.setBackground(completionPanelToggleKey, ColorType.STRIP_BACKGROUND)
+        colors.setColor(completionPanelToggleKey, ColorType.TOOL_BAR_EXPAND_KEY)
+        completionPanelToggleKey.setOnClickListener(this)
+        updateCompletionToggle()
 
         // background indicator for pinned keys
         val color = colors.get(ColorType.TOOL_BAR_KEY_ENABLED_BACKGROUND) or -0x1000000 // ignore alpha (in Java this is more readable 0xFF000000)
@@ -228,6 +238,24 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         suggestionsStrip.layoutDirection = newLayoutDirection
     }
 
+    /**
+     * Show the completion-panel toggle key only when the multi-word completion feature is enabled,
+     * and set its chevron to reflect whether the panel is currently shown (up = will hide / shown,
+     * down = will show / hidden), mirroring the toolbar-expand key's style.
+     */
+    fun updateCompletionToggle() {
+        val enabled = Settings.getValues().mMultiwordCompletionEnabled
+        completionPanelToggleKey.isVisible = enabled
+        if (!enabled) return
+        val shown = context.prefs()
+            .getBoolean(Settings.PREF_COMPLETION_PANEL_SHOWN, Defaults.PREF_COMPLETION_PANEL_SHOWN)
+        completionPanelToggleKey.setImageResource(if (shown) R.drawable.ic_dpad_up else R.drawable.ic_dpad_down)
+        completionPanelToggleKey.contentDescription = resources.getString(
+            if (shown) R.string.completion_panel_collapse else R.string.completion_panel_expand
+        )
+        Settings.getValues().mColors.setColor(completionPanelToggleKey, ColorType.TOOL_BAR_EXPAND_KEY)
+    }
+
     fun setToolbarVisibility(toolbarVisible: Boolean) {
         pinnedKeys.isVisible = !toolbarVisible
         suggestionsStrip.isVisible = !toolbarVisible
@@ -246,6 +274,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
         clear()
         setRtl(isRtlLanguage)
         suggestedWords = suggestions
+        updateCompletionToggle()
         startIndexOfMoreSuggestions = layoutHelper.layoutAndReturnStartIndexOfMoreSuggestions(
             context, suggestedWords, suggestionsStrip, this
         )
@@ -339,6 +368,11 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
                 listener.onCodeInput(code, Constants.SUGGESTION_STRIP_COORDINATE, Constants.SUGGESTION_STRIP_COORDINATE, false)
                 return
             }
+        }
+        if (view === completionPanelToggleKey) {
+            listener.onToggleCompletionPanel()
+            updateCompletionToggle()
+            return
         }
         if (view === toolbarExpandKey) {
             setToolbarVisibility(toolbarContainer.visibility != VISIBLE)

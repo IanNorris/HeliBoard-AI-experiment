@@ -88,6 +88,6 @@ object ModelCatalog {
 
     fun byId(id: String): ModelInfo? = MODELS.firstOrNull { it.id == id }
 
-    /** The default model to offer. */
-    val default: ModelInfo get() = MODELS.first()
+    /** The default model to offer. Qwen2.5 0.5B base gives markedly better completions than SmolLM2. */
+    val default: ModelInfo get() = byId("qwen2.5-0.5b-base") ?: MODELS.first()
 }

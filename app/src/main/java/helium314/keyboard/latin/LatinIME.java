@@ -64,6 +64,7 @@ import helium314.keyboard.latin.common.ViewOutlineProviderUtilsKt;
 import helium314.keyboard.latin.define.DebugFlags;
 import helium314.keyboard.latin.inputlogic.InputLogic;
 import helium314.keyboard.latin.personalization.PersonalizationHelper;
+import helium314.keyboard.latin.settings.Defaults;
 import helium314.keyboard.latin.settings.Settings;
 import helium314.keyboard.latin.settings.SettingsValues;
 import helium314.keyboard.latin.suggestions.SuggestionStripView;
@@ -147,6 +148,7 @@ public class LatinIME extends InputMethodService implements
     private volatile boolean mCompletionGenerating = false;
     private String mCompletionModelId = null;
     private boolean mCompletionUseNgramChain = false;
+    private SuggestedWords mLastSuggestedWordsForCompletion = SuggestedWords.getEmptyInstance();
 
     private RichInputMethodManager mRichImm;
     final KeyboardSwitcher mKeyboardSwitcher;
@@ -1164,6 +1166,16 @@ public class LatinIME extends InputMethodService implements
     }
 
     @Override
+    public void onToggleCompletionPanel() {
+        final android.content.SharedPreferences prefs = KtxKt.prefs(this);
+        final boolean shown = prefs.getBoolean(Settings.PREF_COMPLETION_PANEL_SHOWN, Defaults.PREF_COMPLETION_PANEL_SHOWN);
+        prefs.edit().putBoolean(Settings.PREF_COMPLETION_PANEL_SHOWN, !shown).apply();
+        // apply immediately using the last suggestions, then fix window insets for the height change
+        updateCompletionStrip(mSettings.getCurrent(), mLastSuggestedWordsForCompletion);
+        if (mInputView != null) mInputView.requestLayout();
+    }
+
+    @Override
     public void onDisplayCompletions(final CompletionInfo[] applicationSpecifiedCompletions) {
         if (DebugFlags.DEBUG_ENABLED) {
             Log.i(TAG, "Received completions:");
@@ -1657,7 +1669,11 @@ public class LatinIME extends InputMethodService implements
      */
     private void updateCompletionStrip(final SettingsValues settingsValues, final SuggestedWords suggestedWords) {
         if (mCompletionStripView == null || mCompletionEngine == null) return;
+        mLastSuggestedWordsForCompletion = suggestedWords;
+        final boolean panelShown = KtxKt.prefs(this)
+                .getBoolean(Settings.PREF_COMPLETION_PANEL_SHOWN, Defaults.PREF_COMPLETION_PANEL_SHOWN);
         final boolean eligible = settingsValues.mMultiwordCompletionEnabled
+                && panelShown
                 && hasSuggestionStripView()
                 && onEvaluateInputViewShown()
                 && !isFullscreenMode()
