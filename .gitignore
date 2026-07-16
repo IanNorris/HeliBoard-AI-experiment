@@ -17,3 +17,4 @@ tools/*.txt
 *.sh
 /llama/build
 /llama/.cxx
+/llama/src/main/cpp/llama.cpp/build-host/
