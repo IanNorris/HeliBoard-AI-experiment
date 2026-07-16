@@ -25,6 +25,7 @@ import android.view.ViewGroup
 import android.view.accessibility.AccessibilityEvent
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.core.view.doOnNextLayout
@@ -122,6 +123,7 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
     private val suggestionsStrip: ViewGroup = findViewById(R.id.suggestions_strip)
     private val toolbarExpandKey = findViewById<ImageButton>(R.id.suggestions_strip_toolbar_key)
     private val completionPanelToggleKey = findViewById<ImageButton>(R.id.completion_panel_toggle_key)
+    private val completionProgress = findViewById<ProgressBar>(R.id.completion_progress)
     private val incognitoIcon = KeyboardIconsSet.instance.getNewDrawable(ToolbarKey.INCOGNITO.name, context)
     private val toolbarArrowIcon = KeyboardIconsSet.instance.getNewDrawable(KeyboardIconsSet.NAME_TOOLBAR_KEY, context)
     private val defaultToolbarBackground: Drawable = toolbarExpandKey.background
@@ -254,6 +256,11 @@ class SuggestionStripView(context: Context, attrs: AttributeSet?, defStyle: Int)
             if (shown) R.string.completion_panel_collapse else R.string.completion_panel_expand
         )
         Settings.getValues().mColors.setColor(completionPanelToggleKey, ColorType.TOOL_BAR_EXPAND_KEY)
+    }
+
+    /** Show or hide the far-right spinner indicating a multi-word completion is being generated. */
+    fun setCompletionGenerating(generating: Boolean) {
+        completionProgress.isVisible = generating
     }
 
     fun setToolbarVisibility(toolbarVisible: Boolean) {

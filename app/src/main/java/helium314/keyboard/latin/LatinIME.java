@@ -146,6 +146,10 @@ public class LatinIME extends InputMethodService implements
     private helium314.keyboard.latin.completion.ModelCompletionProvider mModelCompletionProvider;
     private java.util.concurrent.ExecutorService mCompletionExecutor;
     private volatile boolean mCompletionGenerating = false;
+    private boolean mCompletionRerunRequested = false;
+    private String mPendingGenContext = null;
+    private String mPendingGenPrefix = null;
+    private java.util.List<String> mPendingGenDictWords = java.util.Collections.emptyList();
     private String mCompletionModelId = null;
     private boolean mCompletionUseNgramChain = false;
     private SuggestedWords mLastSuggestedWordsForCompletion = SuggestedWords.getEmptyInstance();
@@ -1682,6 +1686,7 @@ public class LatinIME extends InputMethodService implements
             mCompletionEngine.invalidate();
             mCompletionStripView.clear();
             mCompletionStripView.setVisibility(View.GONE);
+            if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
             return;
         }
         // reserve a stable row while the feature is on, so the strip does not jitter the IME window
@@ -1706,29 +1711,63 @@ public class LatinIME extends InputMethodService implements
         final java.util.List<helium314.keyboard.latin.completion.CompletionCandidate> filtered =
                 mCompletionEngine.onPrefixChanged(leftContext, prefix);
         if (filtered != null) {
+            if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
             mCompletionStripView.setCandidates(filtered, prefix);
             return;
         }
-        // slow path: regenerate off the UI thread; swap in only if still valid when it returns
-        final String genContext = leftContext;
-        final String genPrefix = prefix;
-        final java.util.List<String> genDictWords = dictionaryWordsFor(suggestedWords, prefix);
+        // slow path: the pool is stale for this context. Clear the visible panel immediately so old
+        // (now-wrong) candidates can never linger, show the spinner, and (re)dispatch generation.
+        mCompletionStripView.clear();
+        mPendingGenContext = leftContext;
+        mPendingGenPrefix = prefix;
+        mPendingGenDictWords = dictionaryWordsFor(suggestedWords, prefix);
+        if (mCompletionGenerating) {
+            // a generation is in flight for an older context; coalesce to the latest pending request
+            // (size-1, drop-oldest) so we always end up generating for the CURRENT context
+            mCompletionRerunRequested = true;
+            return;
+        }
+        startCompletionGeneration();
+    }
+
+    /**
+     * Dispatch one background completion generation for the latest pending context. On completion it
+     * either re-dispatches (if the context moved on while generating) or publishes the result, but
+     * only if it is still valid for the current context (epoch unchanged). Runs the generation off
+     * the UI thread; all bookkeeping stays on the UI thread so the flags need no locking.
+     */
+    private void startCompletionGeneration() {
+        final String genContext = mPendingGenContext;
+        final String genPrefix = mPendingGenPrefix;
+        final java.util.List<String> genDictWords = mPendingGenDictWords;
         final int epochAtDispatch = mCompletionEngine.getCurrentEpoch();
-        if (mCompletionGenerating) return; // one in-flight generation at a time
         mCompletionGenerating = true;
+        mCompletionRerunRequested = false;
+        if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(true);
         mCompletionExecutor.execute(() -> {
-            final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result;
+            helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result = null;
             try {
                 result = mCompletionEngine.regenerate(genContext, genPrefix, genDictWords);
             } finally {
-                mCompletionGenerating = false;
+                final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult r = result;
+                mHandler.post(() -> {
+                    mCompletionGenerating = false;
+                    // context moved on while we were generating -> regenerate for the latest context,
+                    // discarding this (now stale) result
+                    if (mCompletionRerunRequested) {
+                        startCompletionGeneration();
+                        return;
+                    }
+                    if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
+                    if (mCompletionStripView == null) return;
+                    // drop stale results: context changed (cursor move, commit, accept, focus) since dispatch
+                    if (r == null || mCompletionEngine.getCurrentEpoch() != epochAtDispatch) {
+                        mCompletionStripView.clear();
+                        return;
+                    }
+                    mCompletionStripView.setCandidates(r.getCandidates(), genPrefix);
+                });
             }
-            mHandler.post(() -> {
-                if (mCompletionStripView == null) return;
-                // drop stale results: context changed (cursor move, commit, focus) since dispatch
-                if (mCompletionEngine.getCurrentEpoch() != epochAtDispatch) return;
-                mCompletionStripView.setCandidates(result.getCandidates(), genPrefix);
-            });
         });
     }
 
@@ -1740,7 +1779,10 @@ public class LatinIME extends InputMethodService implements
     private void onCompletionWordAccepted(
             final helium314.keyboard.latin.completion.CompletionCandidate candidate, final int wordIndex) {
         final SettingsValues settingsValues = mSettings.getCurrent();
+        // clear the panel BEFORE committing: accept() bumps the engine epoch (invalidating any
+        // in-flight generation) and the just-accepted candidates are about to be stale
         final String textToCommit = mCompletionEngine.accept(candidate, wordIndex);
+        if (mCompletionStripView != null) mCompletionStripView.clear();
         final InputTransaction transaction = mInputLogic.commitAcceptedCompletion(
                 settingsValues, textToCommit, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
         if (transaction != null) {
