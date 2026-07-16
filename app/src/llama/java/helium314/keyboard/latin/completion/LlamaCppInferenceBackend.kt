@@ -27,7 +27,16 @@ class LlamaCppInferenceBackend(
     override fun generate(prompt: String, maxTokens: Int): String = backend.generate(prompt, maxTokens)
 
     override fun generateMultiScored(prompt: String, maxTokens: Int, count: Int): List<ScoredCandidate> =
-        backend.generateMulti(prompt, maxTokens, count).map { ScoredCandidate(it.text, it.score) }
+        generateMultiScoredWithStats(prompt, maxTokens, count).first
+
+    override fun generateMultiScoredWithStats(
+        prompt: String, maxTokens: Int, count: Int,
+    ): Pair<List<ScoredCandidate>, GenerationStats> {
+        val result = backend.generateMulti(prompt, maxTokens, count)
+        val candidates = result.candidates.map { ScoredCandidate(it.text, it.score, it.genTokens, it.genMs) }
+        val stats = GenerationStats(result.stats.promptTokens, result.stats.prefillMs, result.stats.totalMs)
+        return candidates to stats
+    }
 
     override fun close() = backend.close()
 }

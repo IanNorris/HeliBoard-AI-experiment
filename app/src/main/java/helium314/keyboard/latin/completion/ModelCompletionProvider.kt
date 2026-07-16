@@ -68,8 +68,9 @@ class ModelCompletionProvider @JvmOverloads constructor(
         // suppress the low-confidence ones so a weak context shows fewer/zero rather than junk.
         if (partial.isEmpty()) {
             val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
-            val scored = try { backend.generateMultiScored(prompt, maxTokens, OVERSAMPLE) }
+            val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE) }
                 catch (e: Exception) { return emptyList() }
+            publishDebug(prompt, scored, stats)
             val candidates = suppressLowConfidence(scored)
                 .mapNotNull { ResponseParser.parse(it.text, promptEcho = prompt, maxWords = MAX_WORDS) }
             return dedupeDistinct(candidates, max)
@@ -97,8 +98,9 @@ class ModelCompletionProvider @JvmOverloads constructor(
         // No dictionary completion available: best-effort raw-fragment continuation, still suppressing
         // low-confidence output.
         val prompt = PromptBuilder.build(context.leftContext + partial) ?: return emptyList()
-        val scored = try { backend.generateMultiScored(prompt, maxTokens, OVERSAMPLE) }
+        val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE) }
             catch (e: Exception) { return emptyList() }
+        publishDebug(prompt, scored, stats)
         val candidates = suppressLowConfidence(scored).mapNotNull { sc ->
             val raw = sc.text
             if (raw.isEmpty() || raw[0].isWhitespace()) null
@@ -106,6 +108,23 @@ class ModelCompletionProvider @JvmOverloads constructor(
                 ?.takeIf { it.firstWord.startsWith(partial, ignoreCase = true) }
         }
         return dedupeDistinct(candidates, max)
+    }
+
+    /** Record the last generation for the debug overlay (no-op unless the debug panel is enabled). */
+    private fun publishDebug(prompt: String, scored: List<ScoredCandidate>, stats: GenerationStats) {
+        if (!CompletionDebug.enabled) return
+        val totalGenTokens = scored.sumOf { it.genTokens }
+        CompletionDebug.publish(CompletionDebug.Snapshot(
+            source = "LLM",
+            prompt = prompt,
+            candidates = scored.map {
+                CompletionDebug.DebugCandidate(it.text, it.score, it.genTokens, it.genMs, "LLM")
+            },
+            promptTokens = stats.promptTokens,
+            prefillMs = stats.prefillMs,
+            totalMs = stats.totalMs,
+            tokensPerSecond = stats.tokensPerSecond(totalGenTokens),
+        ))
     }
 
     /**

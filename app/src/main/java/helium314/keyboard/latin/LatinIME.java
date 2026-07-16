@@ -142,6 +142,7 @@ public class LatinIME extends InputMethodService implements
     private InsetsOutlineProvider mInsetsUpdater;
     private SuggestionStripView mSuggestionStripView;
     private helium314.keyboard.latin.completion.CompletionStripView mCompletionStripView;
+    private helium314.keyboard.latin.completion.CompletionDebugView mCompletionDebugView;
     private helium314.keyboard.latin.completion.CompletionEngine mCompletionEngine;
     private helium314.keyboard.latin.completion.ModelCompletionProvider mModelCompletionProvider;
     private java.util.concurrent.ExecutorService mCompletionExecutor;
@@ -788,6 +789,7 @@ public class LatinIME extends InputMethodService implements
             mCompletionStripView.setListener((candidate, wordIndex) ->
                     onCompletionWordAccepted(candidate, wordIndex));
         }
+        mCompletionDebugView = view.findViewById(R.id.completion_debug_view);
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
             mSuggestionStripView.setListener(this, view);
@@ -1687,10 +1689,21 @@ public class LatinIME extends InputMethodService implements
             mCompletionStripView.clear();
             mCompletionStripView.setVisibility(View.GONE);
             if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
+            helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.setEnabled(false);
+            if (mCompletionDebugView != null) mCompletionDebugView.setVisibility(View.GONE);
             return;
         }
         // reserve a stable row while the feature is on, so the strip does not jitter the IME window
         mCompletionStripView.setVisibility(View.VISIBLE);
+        // developer debug overlay (prompt / candidates / tokens/sec), gated on its own setting
+        final boolean debugOn = KtxKt.prefs(this)
+                .getBoolean(Settings.PREF_COMPLETION_DEBUG, Defaults.PREF_COMPLETION_DEBUG);
+        helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.setEnabled(debugOn);
+        if (mCompletionDebugView != null) {
+            mCompletionDebugView.setVisibility(debugOn ? View.VISIBLE : View.GONE);
+            if (debugOn) mCompletionDebugView.render(
+                    helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.getLast());
+        }
         if (mInputLogic.mConnection.hasSlowInputConnection()) {
             mCompletionStripView.clear();
             return;
@@ -1759,6 +1772,10 @@ public class LatinIME extends InputMethodService implements
                         return;
                     }
                     if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
+                    if (mCompletionDebugView != null && mCompletionDebugView.getVisibility() == View.VISIBLE) {
+                        mCompletionDebugView.render(
+                                helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.getLast());
+                    }
                     if (mCompletionStripView == null) return;
                     // drop stale results: context changed (cursor move, commit, accept, focus) since dispatch
                     if (r == null || mCompletionEngine.getCurrentEpoch() != epochAtDispatch) {

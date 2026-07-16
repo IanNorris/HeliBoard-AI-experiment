@@ -29,26 +29,53 @@ class LlamaBackend(
         return LlamaNative.generate(h, prompt, maxTokens)
     }
 
-    /** A generated continuation with its confidence score (mean-per-word logprob; higher = better). */
-    data class ScoredCompletion(val text: String, val score: Float)
+    /** A generated continuation with its confidence score and per-candidate timing (diagnostics). */
+    data class ScoredCompletion(val text: String, val score: Float, val genTokens: Int = 0, val genMs: Long = 0)
 
-    /** Generate [count] diverse short continuations for [prompt], each with a confidence score. */
-    fun generateMulti(prompt: String, maxTokens: Int, count: Int): List<ScoredCompletion> {
+    /** Aggregate stats for a multi-generation, used by the debug panel. */
+    data class GenStats(val promptTokens: Int, val prefillMs: Long, val totalMs: Long)
+
+    /** Candidates plus aggregate stats for one [generateMulti] call. */
+    data class MultiResult(val candidates: List<ScoredCompletion>, val stats: GenStats)
+
+    /** Generate [count] diverse short continuations for [prompt], with scores and timing stats. */
+    fun generateMulti(prompt: String, maxTokens: Int, count: Int): MultiResult {
         val h = handle
-        if (h == 0L) return emptyList()
-        return LlamaNative.generateMulti(h, prompt, maxTokens, count)
-            .split('\n')
-            .mapNotNull { line ->
-                if (line.isBlank()) return@mapNotNull null
-                val tab = line.indexOf('\t')
-                if (tab < 0) {
-                    ScoredCompletion(line.trim(), Float.NEGATIVE_INFINITY)
-                } else {
-                    val score = line.substring(0, tab).trim().toFloatOrNull() ?: Float.NEGATIVE_INFINITY
-                    val text = line.substring(tab + 1).trim()
-                    if (text.isEmpty()) null else ScoredCompletion(text, score)
-                }
+        if (h == 0L) return MultiResult(emptyList(), GenStats(0, 0, 0))
+        val raw = LlamaNative.generateMulti(h, prompt, maxTokens, count)
+        var stats = GenStats(0, 0, 0)
+        val candidates = ArrayList<ScoredCompletion>()
+        for (line in raw.split('\n')) {
+            if (line.isBlank()) continue
+            if (line.startsWith("#STATS\t")) {
+                val f = line.split('\t')
+                stats = GenStats(
+                    promptTokens = f.getOrNull(1)?.trim()?.toIntOrNull() ?: 0,
+                    prefillMs = f.getOrNull(2)?.trim()?.toLongOrNull() ?: 0,
+                    totalMs = f.getOrNull(3)?.trim()?.toLongOrNull() ?: 0,
+                )
+                continue
             }
+            // per-candidate: "score\tgenTokens\tgenMs\ttext" (tolerates the older "score\ttext")
+            val f = line.split('\t', limit = 4)
+            if (f.size >= 4) {
+                val text = f[3].trim()
+                if (text.isEmpty()) continue
+                candidates.add(ScoredCompletion(
+                    text = text,
+                    score = f[0].trim().toFloatOrNull() ?: Float.NEGATIVE_INFINITY,
+                    genTokens = f[1].trim().toIntOrNull() ?: 0,
+                    genMs = f[2].trim().toLongOrNull() ?: 0,
+                ))
+            } else {
+                val tab = line.indexOf('\t')
+                val text = (if (tab < 0) line else line.substring(tab + 1)).trim()
+                if (text.isEmpty()) continue
+                val score = if (tab < 0) Float.NEGATIVE_INFINITY else line.substring(0, tab).trim().toFloatOrNull() ?: Float.NEGATIVE_INFINITY
+                candidates.add(ScoredCompletion(text, score))
+            }
+        }
+        return MultiResult(candidates, stats)
     }
 
     fun close() {

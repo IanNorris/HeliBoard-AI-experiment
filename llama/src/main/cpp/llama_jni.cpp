@@ -8,6 +8,7 @@
 #include <android/log.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <mutex>
@@ -121,16 +122,30 @@ static float token_logprob(Session* s, llama_token id) {
 // [outScore] is non-null it receives the candidate's confidence: the mean over words of the summed
 // per-token raw-model logprob (length-invariant, so short and long candidates compare fairly, and
 // tokenizer fragmentation within a word doesn't distort it). An empty generation scores very low.
+// [outGenTokens] receives the number of generated tokens and [outPrefillMs] the prompt-decode time
+// in milliseconds (diagnostics).
 static std::string generate_one(Session* s, const std::vector<llama_token>& toks,
-                                llama_sampler* smpl, int maxTokens, float* outScore = nullptr) {
+                                llama_sampler* smpl, int maxTokens, float* outScore = nullptr,
+                                int* outGenTokens = nullptr, long* outPrefillMs = nullptr) {
+    using clock = std::chrono::steady_clock;
     llama_memory_clear(llama_get_memory(s->ctx), true);
+    const auto prefillStart = clock::now();
     llama_batch batch = llama_batch_get_one(const_cast<llama_token*>(toks.data()), (int32_t) toks.size());
-    if (llama_decode(s->ctx, batch)) { LOGW("prompt decode failed"); if (outScore) *outScore = -100.0f; return ""; }
+    if (llama_decode(s->ctx, batch)) {
+        LOGW("prompt decode failed");
+        if (outScore) *outScore = -100.0f;
+        if (outGenTokens) *outGenTokens = 0;
+        if (outPrefillMs) *outPrefillMs = 0;
+        return "";
+    }
+    if (outPrefillMs) *outPrefillMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
+        clock::now() - prefillStart).count();
 
     std::string out;
     double wordSum = 0.0;   // running logprob sum of the current word
     double totalWordLogprob = 0.0;
     int    wordCount = 0;
+    int    genTokens = 0;
     bool   inWord = false;
     for (int i = 0; i < maxTokens; ++i) {
         llama_token id = llama_sampler_sample(smpl, s->ctx, -1);
@@ -151,11 +166,13 @@ static std::string generate_one(Session* s, const std::vector<llama_token>& toks
             wordSum += lp;
         }
         out += piece;
+        genTokens++;
         llama_batch step = llama_batch_get_one(&id, 1);
         if (llama_decode(s->ctx, step)) break;
     }
     if (inWord) { totalWordLogprob += wordSum; wordCount++; }
     if (outScore) *outScore = wordCount > 0 ? (float)(totalWordLogprob / wordCount) : -100.0f;
+    if (outGenTokens) *outGenTokens = genTokens;
     return out;
 }
 
@@ -192,11 +209,14 @@ jstring nativeGenerate(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint
     return env->NewStringUTF(out.c_str());
 }
 
-// Generate [count] diverse short continuations. Output is one candidate per line, each formatted as
-// "<score>\t<text>" where score is the mean-per-word logprob confidence (parsed on the Kotlin side
-// for low-confidence suppression and reranking). Candidate 0 is a low-temperature "safe" pick; the
-// rest use a moderate temperature with distinct seeds for variety.
+// Generate [count] diverse short continuations. Output format (one entry per line):
+//   line 0: "#STATS\t<promptTokens>\t<prefillMs>\t<totalMs>"
+//   lines 1..N: "<score>\t<genTokens>\t<genMs>\t<text>"
+// score is the mean-per-word logprob confidence. Candidate 0 is a low-temperature "safe" pick; the
+// rest use a moderate temperature with distinct seeds for variety. The extra fields feed the debug
+// panel / stats; the Kotlin parser tolerates the header and the per-candidate timing fields.
 jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt, jint maxTokens, jint count) {
+    using clock = std::chrono::steady_clock;
     Session* s = lookup((int64_t) handle);
     if (!s) return env->NewStringUTF("");
     const char* promptC = env->GetStringUTFChars(jprompt, nullptr);
@@ -209,22 +229,35 @@ jstring nativeGenerateMulti(JNIEnv* env, jobject, jlong handle, jstring jprompt,
     std::vector<llama_token> toks = tokenize_prompt(s, prompt, limit);
     if (toks.empty()) return env->NewStringUTF("");
 
-    std::string result;
+    const auto totalStart = clock::now();
+    long sumPrefillMs = 0;
+    std::string body;
     for (int i = 0; i < n; ++i) {
         float temp = (i == 0) ? 0.3f : 0.6f;
         llama_sampler* smpl = build_sampler(temp, (uint32_t) (1234 + i));
         float score = -100.0f;
-        std::string cand = generate_one(s, toks, smpl, limit, &score);
+        int genTokens = 0;
+        long prefillMs = 0;
+        const auto candStart = clock::now();
+        std::string cand = generate_one(s, toks, smpl, limit, &score, &genTokens, &prefillMs);
+        const long candMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
+            clock::now() - candStart).count();
         llama_sampler_free(smpl);
-        // Score-only diagnostic (no user-derived text) to calibrate the suppression floor from logs.
-        LOGI("cand[%d] score=%.3f words=%d", i, score,
-             (int) std::count(cand.begin(), cand.end(), ' ') + (cand.empty() ? 0 : 1));
-        if (i > 0) result += "\n";
-        char scoreBuf[32];
-        std::snprintf(scoreBuf, sizeof(scoreBuf), "%.4f\t", score);
-        result += scoreBuf;
-        result += cand;
+        sumPrefillMs += prefillMs;
+        if (i > 0) body += "\n";
+        char lineBuf[64];
+        std::snprintf(lineBuf, sizeof(lineBuf), "%.4f\t%d\t%ld\t", score, genTokens, candMs);
+        body += lineBuf;
+        body += cand;
     }
+    const long totalMs = (long) std::chrono::duration_cast<std::chrono::milliseconds>(
+        clock::now() - totalStart).count();
+
+    char header[96];
+    std::snprintf(header, sizeof(header), "#STATS\t%d\t%ld\t%ld\n",
+                  (int) toks.size(), sumPrefillMs, totalMs);
+    std::string result = header;
+    result += body;
     return env->NewStringUTF(result.c_str());
 }
 

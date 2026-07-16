@@ -35,11 +35,37 @@ interface InferenceBackend {
      * [generateMulti] with a neutral score, so backends without real scores still work.
      */
     fun generateMultiScored(prompt: String, maxTokens: Int, count: Int): List<ScoredCandidate> =
-        generateMulti(prompt, maxTokens, count).map { ScoredCandidate(it, 0f) }
+        generateMulti(prompt, maxTokens, count).map { ScoredCandidate(it) }
+
+    /**
+     * Like [generateMultiScored] but also returns aggregate generation stats (prompt tokens, prefill
+     * vs total time) for the debug panel. Default: candidates with empty stats.
+     */
+    fun generateMultiScoredWithStats(prompt: String, maxTokens: Int, count: Int): Pair<List<ScoredCandidate>, GenerationStats> =
+        generateMultiScored(prompt, maxTokens, count) to GenerationStats()
 
     /** Release native resources. Safe to call repeatedly; a later [load] can re-init. */
     fun close()
 }
 
-/** A raw generated continuation together with its model-confidence [score] (higher is better). */
-data class ScoredCandidate(val text: String, val score: Float)
+/**
+ * A raw generated continuation together with its model-confidence [score] (higher is better) and
+ * optional per-candidate timing ([genTokens], [genMs]) for the debug panel.
+ */
+data class ScoredCandidate(
+    val text: String,
+    val score: Float = 0f,
+    val genTokens: Int = 0,
+    val genMs: Long = 0,
+)
+
+/** Aggregate stats for one multi-candidate generation, surfaced to the debug panel. */
+data class GenerationStats(
+    val promptTokens: Int = 0,
+    val prefillMs: Long = 0,
+    val totalMs: Long = 0,
+) {
+    /** Overall generated-tokens-per-second across the candidates (0 if unknown). */
+    fun tokensPerSecond(genTokens: Int): Double =
+        if (totalMs > 0) genTokens * 1000.0 / totalMs else 0.0
+}
