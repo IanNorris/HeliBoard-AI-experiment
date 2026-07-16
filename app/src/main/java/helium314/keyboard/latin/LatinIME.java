@@ -153,6 +153,7 @@ public class LatinIME extends InputMethodService implements
     private java.util.List<String> mPendingGenDictWords = java.util.Collections.emptyList();
     private String mCompletionModelId = null;
     private boolean mCompletionUseNgramChain = false;
+    private boolean mCompletionBlendActive = false;
     // Generous default total generation budget (ms) to bound the latency tail; made configurable later.
     private static final int COMPLETION_BUDGET_MS = 2500;
     private SuggestedWords mLastSuggestedWordsForCompletion = SuggestedWords.getEmptyInstance();
@@ -1581,12 +1582,17 @@ public class LatinIME extends InputMethodService implements
         mCompletionModelId = repo.getEffectiveModel().getId();
         // Without llama.cpp compiled in there is no LLM source, so always chain the n-gram predictor.
         mCompletionUseNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
+        final boolean blend = BuildConfig.HAS_LLAMA && mSettings.getCurrent().mCompletionBlend
+                && !mCompletionUseNgramChain;
+        mCompletionBlendActive = blend;
         helium314.keyboard.latin.completion.CompletionProvider provider =
                 new helium314.keyboard.latin.completion.StubCompletionProvider();
+        final helium314.keyboard.latin.completion.NgramChainCompletionProvider chainProvider =
+                new helium314.keyboard.latin.completion.NgramChainCompletionProvider(
+                        this::predictNextWordsForCompletion);
         if (mCompletionUseNgramChain) {
             // Skip the LLM and chain the keyboard's own (personalized) next-word predictor.
-            provider = new helium314.keyboard.latin.completion.NgramChainCompletionProvider(
-                    this::predictNextWordsForCompletion);
+            provider = chainProvider;
         } else if (repo.isDeviceSupported()) {
             try {
                 final helium314.keyboard.latin.completion.InferenceBackend backend =
@@ -1594,7 +1600,11 @@ public class LatinIME extends InputMethodService implements
                 if (backend != null) {
                     mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
                             backend, repo::installedModelPath, 14, COMPLETION_BUDGET_MS);
-                    provider = mModelCompletionProvider;
+                    // Blend: personalized chain (instant) + LLM (fluent), gated-merged. Otherwise LLM only.
+                    provider = blend
+                            ? new helium314.keyboard.latin.completion.HybridCompletionProvider(
+                                    chainProvider, mModelCompletionProvider)
+                            : mModelCompletionProvider;
                 }
             } catch (Throwable t) {
                 // if the model runtime is unavailable for any reason, fall back to the stub
@@ -1612,8 +1622,9 @@ public class LatinIME extends InputMethodService implements
                 helium314.keyboard.latin.completion.ModelRepository.get(this);
         final String current = repo.getEffectiveModel().getId();
         final boolean useNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
+        final boolean blend = BuildConfig.HAS_LLAMA && mSettings.getCurrent().mCompletionBlend && !useNgramChain;
         final boolean modelSame = current == null ? mCompletionModelId == null : current.equals(mCompletionModelId);
-        if (modelSame && useNgramChain == mCompletionUseNgramChain) return;
+        if (modelSame && useNgramChain == mCompletionUseNgramChain && blend == mCompletionBlendActive) return;
         if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
         mModelCompletionProvider = null;
         initCompletionEngine();
@@ -1762,7 +1773,16 @@ public class LatinIME extends InputMethodService implements
         mCompletionExecutor.execute(() -> {
             helium314.keyboard.latin.completion.CompletionEngine.GenerationResult result = null;
             try {
-                result = mCompletionEngine.regenerate(genContext, genPrefix, genDictWords);
+                // partial publish: the hybrid provider emits the instant personalized chain before the
+                // LLM resolves; show it right away (epoch-guarded inside the engine + re-checked here)
+                result = mCompletionEngine.regenerate(genContext, genPrefix, genDictWords, partial -> {
+                    mHandler.post(() -> {
+                        if (mCompletionStripView == null) return;
+                        if (mCompletionEngine.getCurrentEpoch() != epochAtDispatch) return;
+                        mCompletionStripView.setCandidates(partial, genPrefix);
+                    });
+                    return kotlin.Unit.INSTANCE;
+                });
             } finally {
                 final helium314.keyboard.latin.completion.CompletionEngine.GenerationResult r = result;
                 mHandler.post(() -> {

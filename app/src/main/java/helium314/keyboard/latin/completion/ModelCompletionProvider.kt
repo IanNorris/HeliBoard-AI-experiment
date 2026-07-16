@@ -61,7 +61,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
     /** Whether a model is installed and the backend is ready (or can be made ready). */
     fun isModelAvailable(): Boolean = modelPathProvider.getPath() != null && !loadFailed
 
-    override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
+    override fun generate(context: CompletionContext, max: Int, onPartial: ((List<CompletionCandidate>) -> Unit)?): List<CompletionCandidate> {
         val partial = context.currentWordPrefix
         // nothing to work with (no committed context and no in-progress word) -> don't even load
         if (context.leftContext.isBlank() && partial.isEmpty()) return emptyList()

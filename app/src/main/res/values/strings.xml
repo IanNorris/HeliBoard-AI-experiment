@@ -128,6 +128,10 @@
     <string name="prefs_completion_ngram_chain">Use word-prediction chain</string>
     <!-- Description for the word-prediction-chain completion source. -->
     <string name="prefs_completion_ngram_chain_summary">Build continuations from the keyboard\'s own next-word prediction (personalized, no AI model) instead of the language model</string>
+    <!-- Title of the option to blend the personalized chain with the AI model. -->
+    <string name="prefs_completion_blend">Blend personalized + AI suggestions</string>
+    <!-- Description for the blend option. -->
+    <string name="prefs_completion_blend_summary">Show your personalized word-prediction chain instantly, then mix in language-model continuations. Best of both: personalized when predictable, fluent otherwise</string>
     <!-- Title of the developer option to show a live LLM debug overlay above the keyboard. -->
     <string name="prefs_completion_debug">Show completion debug panel</string>
     <!-- Description for the completion debug panel option. -->

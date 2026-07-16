@@ -16,7 +16,7 @@ package helium314.keyboard.latin.completion
 class StubCompletionProvider : CompletionProvider {
     override val name = "stub"
 
-    override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
+    override fun generate(context: CompletionContext, max: Int, onPartial: ((List<CompletionCandidate>) -> Unit)?): List<CompletionCandidate> {
         val prefix = context.currentWordPrefix
         return PHRASES.asSequence()
             .map { CompletionCandidate.of(it) }

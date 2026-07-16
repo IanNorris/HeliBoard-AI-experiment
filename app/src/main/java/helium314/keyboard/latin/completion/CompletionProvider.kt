@@ -36,6 +36,14 @@ interface CompletionProvider {
      * [CompletionContext.currentWordPrefix] is non-empty, the first word of each returned candidate
      * should start with it (case-insensitive); the engine also filters defensively, so a provider
      * that ignores the prefix still behaves correctly, just less efficiently.
+     *
+     * [onPartial], if given, may be invoked one or more times with early candidates before the final
+     * list is returned (e.g. a hybrid provider publishing the instant personalized chain before the
+     * slower language model resolves). Providers without a fast partial simply never call it.
      */
-    fun generate(context: CompletionContext, max: Int): List<CompletionCandidate>
+    fun generate(
+        context: CompletionContext,
+        max: Int,
+        onPartial: ((List<CompletionCandidate>) -> Unit)? = null,
+    ): List<CompletionCandidate>
 }

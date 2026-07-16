@@ -29,7 +29,7 @@ class NgramChainCompletionProvider @JvmOverloads constructor(
         val WHITESPACE = Regex("\\s+")
     }
 
-    override fun generate(context: CompletionContext, max: Int): List<CompletionCandidate> {
+    override fun generate(context: CompletionContext, max: Int, onPartial: ((List<CompletionCandidate>) -> Unit)?): List<CompletionCandidate> {
         if (max <= 0) return emptyList()
         val leftWords = context.leftContext.trim().split(WHITESPACE).filter { it.isNotEmpty() }
         val prefix = context.currentWordPrefix

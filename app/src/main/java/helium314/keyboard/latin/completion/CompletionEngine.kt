@@ -60,11 +60,23 @@ class CompletionEngine @JvmOverloads constructor(
      * Returns the epoch captured at the start; if [currentEpoch] has advanced by the time this
      * returns, the context was invalidated meanwhile and the caller should discard the result
      * instead of displaying it.
+     *
+     * [onPartial], if given, is invoked (still off the UI thread) with early candidates the provider
+     * produces before finishing — but only while the epoch is unchanged, so a stale partial for an
+     * old context can never be published.
      */
-    fun regenerate(leftContext: String, prefix: String, dictionaryWords: List<String> = emptyList()): GenerationResult {
+    fun regenerate(
+        leftContext: String,
+        prefix: String,
+        dictionaryWords: List<String> = emptyList(),
+        onPartial: ((List<CompletionCandidate>) -> Unit)? = null,
+    ): GenerationResult {
         val startEpoch = epoch.get()
+        val partial: ((List<CompletionCandidate>) -> Unit)? = if (onPartial == null) null else { cands ->
+            if (epoch.get() == startEpoch) onPartial(cands.take(maxCandidates))
+        }
         // run the (potentially slow) provider OUTSIDE the lock so the fast path isn't blocked
-        val generated = provider.generate(CompletionContext(leftContext, prefix, dictionaryWords), poolSize)
+        val generated = provider.generate(CompletionContext(leftContext, prefix, dictionaryWords), poolSize, partial)
         synchronized(this) {
             if (epoch.get() == startEpoch) {
                 pool = generated
