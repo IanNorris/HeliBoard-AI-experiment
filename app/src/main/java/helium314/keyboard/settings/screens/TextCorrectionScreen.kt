@@ -97,6 +97,20 @@ fun TextCorrectionScreen(
         if (BuildConfig.HAS_LLAMA
             && prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION))
             Settings.PREF_COMPLETION_DEBUG else null,
+        if (BuildConfig.HAS_LLAMA
+            && prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+            && !prefs.getBoolean(Settings.PREF_COMPLETION_USE_NGRAM_CHAIN, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN))
+            Settings.PREF_COMPLETION_MAX_TOKENS else null,
+        if (BuildConfig.HAS_LLAMA
+            && prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+            && !prefs.getBoolean(Settings.PREF_COMPLETION_USE_NGRAM_CHAIN, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN))
+            Settings.PREF_COMPLETION_BUDGET_MS else null,
+        if (BuildConfig.HAS_LLAMA
+            && prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION)
+            && !prefs.getBoolean(Settings.PREF_COMPLETION_USE_NGRAM_CHAIN, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN))
+            Settings.PREF_COMPLETION_CONTEXT_CHARS else null,
+        if (prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION))
+            Settings.PREF_COMPLETION_CANDIDATES else null,
         if (suggestionsEnabled) Settings.PREF_ALWAYS_SHOW_SUGGESTIONS else null,
         if (suggestionsEnabled && prefs.getBoolean(Settings.PREF_ALWAYS_SHOW_SUGGESTIONS, Defaults.PREF_ALWAYS_SHOW_SUGGESTIONS))
             Settings.PREF_ALWAYS_SHOW_SUGGESTIONS_EXCEPT_WEB_TEXT else null,
@@ -232,6 +246,42 @@ fun createCorrectionSettings(context: Context) = listOf(
         R.string.prefs_completion_debug, R.string.prefs_completion_debug_summary
     ) {
         SwitchPreference(it, Defaults.PREF_COMPLETION_DEBUG)
+    },
+    Setting(context, Settings.PREF_COMPLETION_MAX_TOKENS, R.string.prefs_completion_max_tokens) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_COMPLETION_MAX_TOKENS,
+            range = 4f..24f,
+            description = { it.toString() }
+        )
+    },
+    Setting(context, Settings.PREF_COMPLETION_BUDGET_MS, R.string.prefs_completion_budget) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_COMPLETION_BUDGET_MS,
+            range = 300f..5000f,
+            description = { stringResource(R.string.abbreviation_unit_milliseconds, it.toString()) }
+        )
+    },
+    Setting(context, Settings.PREF_COMPLETION_CONTEXT_CHARS, R.string.prefs_completion_context) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_COMPLETION_CONTEXT_CHARS,
+            range = 32f..512f,
+            description = { it.toString() }
+        )
+    },
+    Setting(context, Settings.PREF_COMPLETION_CANDIDATES, R.string.prefs_completion_candidates) { setting ->
+        SliderPreference(
+            name = setting.title,
+            key = setting.key,
+            default = Defaults.PREF_COMPLETION_CANDIDATES,
+            range = 1f..5f,
+            description = { it.toString() }
+        )
     },
     Setting(context, Settings.PREF_ALWAYS_SHOW_SUGGESTIONS,
         R.string.prefs_always_show_suggestions, R.string.prefs_always_show_suggestions_summary

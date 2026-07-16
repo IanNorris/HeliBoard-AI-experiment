@@ -154,8 +154,7 @@ public class LatinIME extends InputMethodService implements
     private String mCompletionModelId = null;
     private boolean mCompletionUseNgramChain = false;
     private boolean mCompletionBlendActive = false;
-    // Generous default total generation budget (ms) to bound the latency tail; made configurable later.
-    private static final int COMPLETION_BUDGET_MS = 2500;
+    private String mCompletionTuningSig = "";
     private SuggestedWords mLastSuggestedWordsForCompletion = SuggestedWords.getEmptyInstance();
 
     private RichInputMethodManager mRichImm;
@@ -1585,6 +1584,13 @@ public class LatinIME extends InputMethodService implements
         final boolean blend = BuildConfig.HAS_LLAMA && mSettings.getCurrent().mCompletionBlend
                 && !mCompletionUseNgramChain;
         mCompletionBlendActive = blend;
+        // user-tunable generation knobs (advanced completion settings)
+        final android.content.SharedPreferences prefs = KtxKt.prefs(this);
+        final int maxTokens = prefs.getInt(Settings.PREF_COMPLETION_MAX_TOKENS, Defaults.PREF_COMPLETION_MAX_TOKENS);
+        final int budgetMs = prefs.getInt(Settings.PREF_COMPLETION_BUDGET_MS, Defaults.PREF_COMPLETION_BUDGET_MS);
+        final int contextChars = prefs.getInt(Settings.PREF_COMPLETION_CONTEXT_CHARS, Defaults.PREF_COMPLETION_CONTEXT_CHARS);
+        final int candidates = prefs.getInt(Settings.PREF_COMPLETION_CANDIDATES, Defaults.PREF_COMPLETION_CANDIDATES);
+        mCompletionTuningSig = maxTokens + "|" + budgetMs + "|" + contextChars + "|" + candidates;
         helium314.keyboard.latin.completion.CompletionProvider provider =
                 new helium314.keyboard.latin.completion.StubCompletionProvider();
         final helium314.keyboard.latin.completion.NgramChainCompletionProvider chainProvider =
@@ -1599,7 +1605,7 @@ public class LatinIME extends InputMethodService implements
                         createInferenceBackend(repo);
                 if (backend != null) {
                     mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
-                            backend, repo::installedModelPath, 14, COMPLETION_BUDGET_MS);
+                            backend, repo::installedModelPath, maxTokens, budgetMs, contextChars);
                     // Blend: personalized chain (instant) + LLM (fluent), gated-merged. Otherwise LLM only.
                     provider = blend
                             ? new helium314.keyboard.latin.completion.HybridCompletionProvider(
@@ -1611,7 +1617,7 @@ public class LatinIME extends InputMethodService implements
                 Log.w(TAG, "on-device model backend unavailable, using stub completions", t);
             }
         }
-        mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider);
+        mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider, candidates, 12);
         if (mCompletionExecutor == null)
             mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
     }
@@ -1624,7 +1630,14 @@ public class LatinIME extends InputMethodService implements
         final boolean useNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
         final boolean blend = BuildConfig.HAS_LLAMA && mSettings.getCurrent().mCompletionBlend && !useNgramChain;
         final boolean modelSame = current == null ? mCompletionModelId == null : current.equals(mCompletionModelId);
-        if (modelSame && useNgramChain == mCompletionUseNgramChain && blend == mCompletionBlendActive) return;
+        final android.content.SharedPreferences prefs = KtxKt.prefs(this);
+        final String tuningSig =
+                prefs.getInt(Settings.PREF_COMPLETION_MAX_TOKENS, Defaults.PREF_COMPLETION_MAX_TOKENS) + "|" +
+                prefs.getInt(Settings.PREF_COMPLETION_BUDGET_MS, Defaults.PREF_COMPLETION_BUDGET_MS) + "|" +
+                prefs.getInt(Settings.PREF_COMPLETION_CONTEXT_CHARS, Defaults.PREF_COMPLETION_CONTEXT_CHARS) + "|" +
+                prefs.getInt(Settings.PREF_COMPLETION_CANDIDATES, Defaults.PREF_COMPLETION_CANDIDATES);
+        if (modelSame && useNgramChain == mCompletionUseNgramChain && blend == mCompletionBlendActive
+                && tuningSig.equals(mCompletionTuningSig)) return;
         if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
         mModelCompletionProvider = null;
         initCompletionEngine();

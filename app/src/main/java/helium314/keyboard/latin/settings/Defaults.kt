@@ -78,6 +78,10 @@ object Defaults {
     const val PREF_ENABLE_MULTIWORD_COMPLETION = false
     const val PREF_COMPLETION_USE_NGRAM_CHAIN = false
     const val PREF_COMPLETION_BLEND = true
+    const val PREF_COMPLETION_MAX_TOKENS = 14
+    const val PREF_COMPLETION_BUDGET_MS = 2500
+    const val PREF_COMPLETION_CONTEXT_CHARS = 256
+    const val PREF_COMPLETION_CANDIDATES = 3
     const val PREF_COMPLETION_PANEL_SHOWN = true
     const val PREF_COMPLETION_DEBUG = false
     const val PREF_ALWAYS_SHOW_SUGGESTIONS = false

@@ -136,6 +136,14 @@
     <string name="prefs_completion_debug">Show completion debug panel</string>
     <!-- Description for the completion debug panel option. -->
     <string name="prefs_completion_debug_summary">Developer overlay above the keyboard showing the model prompt, candidates, token counts, timing and tokens/second for each generation</string>
+    <!-- Title of the setting for the max number of words the model generates per suggestion. -->
+    <string name="prefs_completion_max_tokens">Completion length (max tokens)</string>
+    <!-- Title of the setting for the total generation time budget. -->
+    <string name="prefs_completion_budget">Completion time budget</string>
+    <!-- Title of the setting for how much preceding text is given to the model. -->
+    <string name="prefs_completion_context">Completion context length (characters)</string>
+    <!-- Title of the setting for how many suggestion rows to generate. -->
+    <string name="prefs_completion_candidates">Number of suggestions</string>
     <!-- Option to override app flag to not show suggestions -->
     <string name="prefs_always_show_suggestions">Always show suggestions</string>
     <!-- Description for override app flag to not show suggestions -->

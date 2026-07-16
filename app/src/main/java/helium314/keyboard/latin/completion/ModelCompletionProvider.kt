@@ -22,6 +22,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
     private val modelPathProvider: ModelPathProvider,
     private val maxTokens: Int = 14,
     private val budgetMs: Int = 0,
+    private val contextChars: Int = PromptBuilder.DEFAULT_MAX_CHARS,
 ) : CompletionProvider {
 
     /** Supplies the installed model path (or null if absent). A SAM type so Java can pass a method ref. */
@@ -70,7 +71,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
         // Whole-word mode (just typed a space): generate several diverse short continuations, then
         // suppress the low-confidence ones so a weak context shows fewer/zero rather than junk.
         if (partial.isEmpty()) {
-            val prompt = PromptBuilder.build(context.leftContext) ?: return emptyList()
+            val prompt = PromptBuilder.build(context.leftContext, contextChars) ?: return emptyList()
             val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE, budgetMs) }
                 catch (e: Exception) { return emptyList() }
             publishDebug(prompt, scored, stats)
@@ -88,7 +89,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
         if (anchors.isNotEmpty()) {
             val candidates = ArrayList<CompletionCandidate>()
             for (word in anchors) {
-                val prompt = PromptBuilder.build(context.leftContext + word) ?: continue
+                val prompt = PromptBuilder.build(context.leftContext + word, contextChars) ?: continue
                 val raw = try { backend.generate(prompt, maxTokens) } catch (e: Exception) { "" }
                 val text = if (raw.isBlank()) word else "$word ${raw.trimStart()}"
                 val cand = ResponseParser.parse(text, maxWords = MAX_WORDS)
@@ -100,7 +101,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
 
         // No dictionary completion available: best-effort raw-fragment continuation, still suppressing
         // low-confidence output.
-        val prompt = PromptBuilder.build(context.leftContext + partial) ?: return emptyList()
+        val prompt = PromptBuilder.build(context.leftContext + partial, contextChars) ?: return emptyList()
         val (scored, stats) = try { backend.generateMultiScoredWithStats(prompt, maxTokens, OVERSAMPLE, budgetMs) }
             catch (e: Exception) { return emptyList() }
         publishDebug(prompt, scored, stats)
