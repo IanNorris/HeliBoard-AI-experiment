@@ -35,6 +35,7 @@ class ModelCompletionProvider @JvmOverloads constructor(
     private companion object {
         const val OVERSAMPLE = 5   // generate this many, dedupe down to the requested count
         const val MAX_WORDS = 8    // continuation length; the panel wraps long lines onto more rows
+        const val MIN_WORDS = 2    // prefer multi-word phrases; single words are only used to fill slots
         // Low-confidence suppression thresholds on the mean-per-word logprob score. Conservative:
         // they only kill genuinely unlikely output (e.g. a bare random number) rather than trimming
         // plausible-but-unusual phrasing. Tune on-device from logged scores.
@@ -107,18 +108,25 @@ class ModelCompletionProvider @JvmOverloads constructor(
         return dedupeDistinct(candidates, max)
     }
 
-    /** Keep candidates that are distinct on their first two words, capped at [max]. */
+    /**
+     * Keep candidates that are distinct on their first two words, capped at [max]. Multi-word
+     * candidates are preferred: single-word continuations (which the normal suggestion strip already
+     * covers) are only included to fill remaining slots once the multi-word ones are exhausted, so a
+     * lone word never displaces a real phrase in the panel.
+     */
     private fun dedupeDistinct(candidates: List<CompletionCandidate>, max: Int): List<CompletionCandidate> {
         val seen = HashSet<String>()
-        val out = ArrayList<CompletionCandidate>(max)
+        val multiWord = ArrayList<CompletionCandidate>(max)
+        val singleWord = ArrayList<CompletionCandidate>()
         for (c in candidates) {
             if (c.words.isEmpty()) continue
             val key = c.words.take(2).joinToString(" ") { it.lowercase() }
-            if (seen.add(key)) {
-                out.add(c)
-                if (out.size >= max) break
-            }
+            if (!seen.add(key)) continue
+            if (c.words.size >= MIN_WORDS) multiWord.add(c) else singleWord.add(c)
         }
+        val out = ArrayList<CompletionCandidate>(max)
+        out.addAll(multiWord.take(max))
+        if (out.size < max) out.addAll(singleWord.take(max - out.size))
         return out
     }
 

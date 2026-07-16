@@ -74,17 +74,24 @@ class NgramChainCompletionProvider @JvmOverloads constructor(
     }
 
     /** Keep candidates that are distinct on their first two words, capped at [max]. */
+    /**
+     * Keep candidates distinct on their first two words, capped at [max], preferring multi-word
+     * chains. A lone seed word (the predictor gave nothing after it) is only used to fill remaining
+     * slots, so it never displaces a real multi-word continuation.
+     */
     private fun dedupeDistinct(candidates: List<CompletionCandidate>, max: Int): List<CompletionCandidate> {
         val seen = HashSet<String>()
-        val out = ArrayList<CompletionCandidate>(max)
+        val multiWord = ArrayList<CompletionCandidate>(max)
+        val singleWord = ArrayList<CompletionCandidate>()
         for (c in candidates) {
             if (c.words.isEmpty()) continue
             val key = c.words.take(2).joinToString(" ") { it.lowercase() }
-            if (seen.add(key)) {
-                out.add(c)
-                if (out.size >= max) break
-            }
+            if (!seen.add(key)) continue
+            if (c.words.size >= 2) multiWord.add(c) else singleWord.add(c)
         }
+        val out = ArrayList<CompletionCandidate>(max)
+        out.addAll(multiWord.take(max))
+        if (out.size < max) out.addAll(singleWord.take(max - out.size))
         return out
     }
 }

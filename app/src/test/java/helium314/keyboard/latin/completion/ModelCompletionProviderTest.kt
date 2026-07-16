@@ -210,4 +210,32 @@ class ModelCompletionProviderTest {
         val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
         assertTrue(provider.generate(ctx(), max = 3).isEmpty())
     }
+
+    @Test
+    fun generate_prefersMultiWordCandidatesOverSingleWords() {
+        // a lone "died" should not displace real phrases; it only fills a remaining slot (here none)
+        val backend = FakeBackend(scoredOutputs = listOf(
+            ScoredCandidate("great time last week", -1.0f),
+            ScoredCandidate("died", -1.1f),
+            ScoredCandidate("good night out tonight", -1.2f),
+            ScoredCandidate("lovely weekend away", -1.3f),
+        ))
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        val result = provider.generate(ctx(), max = 3)
+        assertEquals(3, result.size)
+        assertFalse(result.any { it.words.size == 1 }) // "died" excluded; three phrases available
+    }
+
+    @Test
+    fun generate_usesSingleWordOnlyToFillWhenTooFewPhrases() {
+        val backend = FakeBackend(scoredOutputs = listOf(
+            ScoredCandidate("great time ahead", -1.0f),
+            ScoredCandidate("died", -1.1f),
+        ))
+        val provider = ModelCompletionProvider(backend, { "/models/x.gguf" })
+        val result = provider.generate(ctx(), max = 3)
+        // phrase first, then the single word fills a remaining slot
+        assertEquals(listOf("great", "time", "ahead"), result[0].words)
+        assertTrue(result.any { it.words == listOf("died") })
+    }
 }
