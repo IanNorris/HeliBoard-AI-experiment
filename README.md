@@ -1,11 +1,14 @@
-# HeliBoard — AI completion experiment (personal fork)
+# HeliBoard — personal experimental fork
 
 > [!WARNING]
 > **This is a temporary, personal, experimental fork of [HeliBoard](https://github.com/Helium314/HeliBoard), not an official release.**
 >
 > It was created by [@IanNorris](https://github.com/IanNorris) to experiment with AI-driven changes (largely written by an AI coding agent), including:
-> - **Multi-word completion** with two selectable sources: an on-device base LLM (llama.cpp / SmolLM2) and an **n-gram chain** that extends the keyboard's own personalized next-word predictor;
-> - **Low-confidence suggestion suppression**, an embedded **test field in settings**, dynamic **spacebar width**, and other typing tweaks.
+> - **Personalized multi-word completion** — a strip of multi-word continuations built by chaining the keyboard's own next-word predictor (fed by your personal history dictionary). Fully on-device, no language model.
+> - **Typing / layout tweaks**: adjustable spacebar-row side-key width, "keep valid typed words", movable ?123 symbol key, comma-next-to-period, long-press-backspace word deletion.
+> - **Utilities**: an embedded test field in settings, and a backup scope picker (shareable settings-only vs. full).
+>
+> An earlier on-device **LLM** completion path (llama.cpp / SmolLM2 / Qwen) was tried and removed as impractical on-device; it is preserved on the `archive/llm-experiment` branch and the `v4.0-exp*` tags.
 >
 > It is **not production-ready**, is **not affiliated with or endorsed by the HeliBoard project**, may be unstable, and could be deleted or force-pushed at any time. Do not rely on it. For the real thing, use upstream [HeliBoard](https://github.com/Helium314/HeliBoard).
 >

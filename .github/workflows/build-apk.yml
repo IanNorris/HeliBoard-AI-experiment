@@ -2,8 +2,8 @@ name: Build APK
 
 # Personal experimental fork: build the combined RELEASE APK on every push to main/integration
 # (and on demand). Release is preferred (R8-optimized, snappier at runtime); switch back to
-# assembleDebug here if a debug build is explicitly needed. Requires the llama.cpp submodule and
-# the NDK/CMake used by the :llama native module. Signed with a release key if repo secrets are
+# assembleDebug here if a debug build is explicitly needed.
+# Signed with a release key if repo secrets are
 # set, otherwise the debug key (still installable).
 on:
   push:
@@ -17,8 +17,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -26,12 +24,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install NDK and CMake for the :llama native module
+      - name: Install NDK for the app dictionary native build
         run: |
           set -e
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "ndk;28.0.13004108" "cmake;3.22.1"
+          "$SDKMANAGER" "ndk;28.0.13004108"
 
       - uses: gradle/actions/setup-gradle@v3
 

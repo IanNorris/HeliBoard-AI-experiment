@@ -1,11 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     SPDX-License-Identifier: GPL-3.0-only
-    Unit-test manifest: the MediaPipe GenAI library declares minSdk 24 while HeliBoard is 21.
-    The unit-test manifest merge is separate from the main one, so the same override is repeated
-    here to let the (pure-JVM) completion tests build. No MediaPipe class is used in tests.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <uses-sdk tools:overrideLibrary="helium314.keyboard.llama" />
-</manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

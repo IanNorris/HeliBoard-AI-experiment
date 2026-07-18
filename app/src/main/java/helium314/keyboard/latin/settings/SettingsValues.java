@@ -160,8 +160,6 @@ public class SettingsValues {
     public final boolean mKeepValidTypedWord;
     public final boolean mSuggestionsEnabled;
     public final boolean mMultiwordCompletionEnabled;
-    public final boolean mCompletionUseNgramChain;
-    public final boolean mCompletionBlend;
     private final boolean mOverrideShowingSuggestions;
     public final boolean mSuggestClipboardContent;
     public final boolean mIncognitoModeEnabled;
@@ -281,8 +279,6 @@ public class SettingsValues {
         mSuggestionsEnabled = prefs.getBoolean(Settings.PREF_SHOW_SUGGESTIONS, Defaults.PREF_SHOW_SUGGESTIONS)
             && (mInputAttributes.mShouldShowSuggestions || mOverrideShowingSuggestions) && !mSuggestionStripHiddenPerUserSettings;
         mMultiwordCompletionEnabled = prefs.getBoolean(Settings.PREF_ENABLE_MULTIWORD_COMPLETION, Defaults.PREF_ENABLE_MULTIWORD_COMPLETION);
-        mCompletionUseNgramChain = prefs.getBoolean(Settings.PREF_COMPLETION_USE_NGRAM_CHAIN, Defaults.PREF_COMPLETION_USE_NGRAM_CHAIN);
-        mCompletionBlend = prefs.getBoolean(Settings.PREF_COMPLETION_BLEND, Defaults.PREF_COMPLETION_BLEND);
         mIncognitoModeEnabled = prefs.getBoolean(Settings.PREF_ALWAYS_INCOGNITO_MODE, Defaults.PREF_ALWAYS_INCOGNITO_MODE) || mInputAttributes.mNoLearning
                 || mInputAttributes.mIsPasswordField;
         mBottomRowScale = Settings.readBottomRowScale(prefs, isLandscape, isFolded);

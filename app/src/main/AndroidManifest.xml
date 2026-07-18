@@ -8,12 +8,6 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- The MediaPipe GenAI library declares minSdk 24, but HeliBoard supports 21. The optional
-         on-device completion feature is gated at runtime on Build.VERSION.SDK_INT >= 24, so we
-         override the library floor here and never touch MediaPipe classes on older devices.
-         The :llama module declares minSdk 23 (posix_madvise) and is likewise runtime-gated. -->
-    <uses-sdk tools:overrideLibrary="helium314.keyboard.llama" />
-
     <uses-permission android:name="android.permission.READ_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />

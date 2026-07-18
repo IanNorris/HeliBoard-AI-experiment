@@ -8,12 +8,6 @@ plugins {
     kotlin("plugin.compose") version "2.3.20"
 }
 
-// Optional on-device LLM: when `enableLlama` is true (default) the :llama native module (llama.cpp)
-// is built in and the LLM completion source is available; when false, the module is dropped for a
-// lighter build and completions fall back to the personalized n-gram chain. Toggle with
-// `-PenableLlama=false` or in gradle.properties.
-val enableLlama = (project.findProperty("enableLlama")?.toString() ?: "true").toBoolean()
-
 android {
     compileSdk = 36
 
@@ -28,7 +22,6 @@ android {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        buildConfigField("boolean", "HAS_LLAMA", enableLlama.toString())
     }
 
     // Optional release signing: if a keystore is provided via env vars (RELEASE_KEYSTORE etc., set by
@@ -107,12 +100,6 @@ android {
         compose = true
     }
 
-    // The single class that touches the :llama module lives in a source set added only when llama is
-    // enabled; a null-returning twin (src/noLlama) keeps the app compiling without the module.
-    sourceSets {
-        getByName("main").java.srcDir(if (enableLlama) "src/llama/java" else "src/noLlama/java")
-    }
-
     externalNativeBuild {
         ndkBuild {
             path = File("src/main/jni/Android.mk")
@@ -180,10 +167,6 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.8")
     implementation("sh.calvin.reorderable:reorderable:3.1.0") // for easier re-ordering
     implementation("com.github.skydoves:colorpicker-compose:1.1.3") // for user-defined colors
-
-    // On-device llama.cpp backend for base-model text completion (separate module: CMake native
-    // build). Optional: excluded when `enableLlama` is false for a lighter APK.
-    if (enableLlama) implementation(project(":llama"))
 
     // test
     testImplementation(kotlin("test"))

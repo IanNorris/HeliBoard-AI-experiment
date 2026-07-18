@@ -142,19 +142,13 @@ public class LatinIME extends InputMethodService implements
     private InsetsOutlineProvider mInsetsUpdater;
     private SuggestionStripView mSuggestionStripView;
     private helium314.keyboard.latin.completion.CompletionStripView mCompletionStripView;
-    private helium314.keyboard.latin.completion.CompletionDebugView mCompletionDebugView;
     private helium314.keyboard.latin.completion.CompletionEngine mCompletionEngine;
-    private helium314.keyboard.latin.completion.ModelCompletionProvider mModelCompletionProvider;
     private java.util.concurrent.ExecutorService mCompletionExecutor;
     private volatile boolean mCompletionGenerating = false;
     private boolean mCompletionRerunRequested = false;
     private String mPendingGenContext = null;
     private String mPendingGenPrefix = null;
     private java.util.List<String> mPendingGenDictWords = java.util.Collections.emptyList();
-    private String mCompletionModelId = null;
-    private boolean mCompletionUseNgramChain = false;
-    private boolean mCompletionBlendActive = false;
-    private String mCompletionTuningSig = "";
     private SuggestedWords mLastSuggestedWordsForCompletion = SuggestedWords.getEmptyInstance();
 
     private RichInputMethodManager mRichImm;
@@ -721,7 +715,6 @@ public class LatinIME extends InputMethodService implements
         mStatsUtilsManager.onDestroy(this /* context */);
         super.onDestroy();
         mHandler.removeCallbacksAndMessages(null);
-        if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
         if (mCompletionExecutor != null) mCompletionExecutor.shutdownNow();
         deallocateMemory();
     }
@@ -791,7 +784,6 @@ public class LatinIME extends InputMethodService implements
             mCompletionStripView.setListener((candidate, wordIndex) ->
                     onCompletionWordAccepted(candidate, wordIndex));
         }
-        mCompletionDebugView = view.findViewById(R.id.completion_debug_view);
         if (hasSuggestionStripView()) {
             mSuggestionStripView.setRtl(mRichImm.getCurrentSubtype().isRtlSubtype());
             mSuggestionStripView.setListener(this, view);
@@ -868,7 +860,6 @@ public class LatinIME extends InputMethodService implements
 
     private void onStartInputInternal(final EditorInfo editorInfo, final boolean restarting) {
         super.onStartInput(editorInfo, restarting);
-        reinitCompletionEngineIfModelChanged();
 
         final RichInputMethodSubtype subtypeForApp = editorInfo == null
             ? null :
@@ -1571,76 +1562,19 @@ public class LatinIME extends InputMethodService implements
     }
 
     /**
-     * Build the completion engine and its worker thread. Uses the on-device model provider when the
-     * device supports it and a model is installed; otherwise the stub provider (which also serves as
-     * a transparent fallback while the model is absent or loading).
+     * Build the completion engine and its worker thread. Completions come from the personalized
+     * n-gram chain (the keyboard's own next-word predictor); a stub is used only as a harmless
+     * fallback if the predictor isn't ready.
      */
     private void initCompletionEngine() {
-        final helium314.keyboard.latin.completion.ModelRepository repo =
-                helium314.keyboard.latin.completion.ModelRepository.get(this);
-        mCompletionModelId = repo.getEffectiveModel().getId();
-        // Without llama.cpp compiled in there is no LLM source, so always chain the n-gram predictor.
-        mCompletionUseNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
-        final boolean blend = BuildConfig.HAS_LLAMA && mSettings.getCurrent().mCompletionBlend
-                && !mCompletionUseNgramChain;
-        mCompletionBlendActive = blend;
-        // user-tunable generation knobs (advanced completion settings)
-        final android.content.SharedPreferences prefs = KtxKt.prefs(this);
-        final int maxTokens = prefs.getInt(Settings.PREF_COMPLETION_MAX_TOKENS, Defaults.PREF_COMPLETION_MAX_TOKENS);
-        final int budgetMs = prefs.getInt(Settings.PREF_COMPLETION_BUDGET_MS, Defaults.PREF_COMPLETION_BUDGET_MS);
-        final int contextChars = prefs.getInt(Settings.PREF_COMPLETION_CONTEXT_CHARS, Defaults.PREF_COMPLETION_CONTEXT_CHARS);
-        final int candidates = prefs.getInt(Settings.PREF_COMPLETION_CANDIDATES, Defaults.PREF_COMPLETION_CANDIDATES);
-        mCompletionTuningSig = maxTokens + "|" + budgetMs + "|" + contextChars + "|" + candidates;
-        helium314.keyboard.latin.completion.CompletionProvider provider =
-                new helium314.keyboard.latin.completion.StubCompletionProvider();
-        final helium314.keyboard.latin.completion.NgramChainCompletionProvider chainProvider =
+        final int candidates = KtxKt.prefs(this)
+                .getInt(Settings.PREF_COMPLETION_CANDIDATES, Defaults.PREF_COMPLETION_CANDIDATES);
+        final helium314.keyboard.latin.completion.CompletionProvider provider =
                 new helium314.keyboard.latin.completion.NgramChainCompletionProvider(
                         this::predictNextWordsForCompletion);
-        if (mCompletionUseNgramChain) {
-            // Skip the LLM and chain the keyboard's own (personalized) next-word predictor.
-            provider = chainProvider;
-        } else if (repo.isDeviceSupported()) {
-            try {
-                final helium314.keyboard.latin.completion.InferenceBackend backend =
-                        createInferenceBackend(repo);
-                if (backend != null) {
-                    mModelCompletionProvider = new helium314.keyboard.latin.completion.ModelCompletionProvider(
-                            backend, repo::installedModelPath, maxTokens, budgetMs, contextChars);
-                    // Blend: personalized chain (instant) + LLM (fluent), gated-merged. Otherwise LLM only.
-                    provider = blend
-                            ? new helium314.keyboard.latin.completion.HybridCompletionProvider(
-                                    chainProvider, mModelCompletionProvider)
-                            : mModelCompletionProvider;
-                }
-            } catch (Throwable t) {
-                // if the model runtime is unavailable for any reason, fall back to the stub
-                Log.w(TAG, "on-device model backend unavailable, using stub completions", t);
-            }
-        }
         mCompletionEngine = new helium314.keyboard.latin.completion.CompletionEngine(provider, candidates, 12);
         if (mCompletionExecutor == null)
             mCompletionExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
-    }
-
-    /** Rebuild the completion engine if the effective (installed/selected) model or source changed. */
-    private void reinitCompletionEngineIfModelChanged() {
-        final helium314.keyboard.latin.completion.ModelRepository repo =
-                helium314.keyboard.latin.completion.ModelRepository.get(this);
-        final String current = repo.getEffectiveModel().getId();
-        final boolean useNgramChain = mSettings.getCurrent().mCompletionUseNgramChain || !BuildConfig.HAS_LLAMA;
-        final boolean blend = BuildConfig.HAS_LLAMA && mSettings.getCurrent().mCompletionBlend && !useNgramChain;
-        final boolean modelSame = current == null ? mCompletionModelId == null : current.equals(mCompletionModelId);
-        final android.content.SharedPreferences prefs = KtxKt.prefs(this);
-        final String tuningSig =
-                prefs.getInt(Settings.PREF_COMPLETION_MAX_TOKENS, Defaults.PREF_COMPLETION_MAX_TOKENS) + "|" +
-                prefs.getInt(Settings.PREF_COMPLETION_BUDGET_MS, Defaults.PREF_COMPLETION_BUDGET_MS) + "|" +
-                prefs.getInt(Settings.PREF_COMPLETION_CONTEXT_CHARS, Defaults.PREF_COMPLETION_CONTEXT_CHARS) + "|" +
-                prefs.getInt(Settings.PREF_COMPLETION_CANDIDATES, Defaults.PREF_COMPLETION_CANDIDATES);
-        if (modelSame && useNgramChain == mCompletionUseNgramChain && blend == mCompletionBlendActive
-                && tuningSig.equals(mCompletionTuningSig)) return;
-        if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
-        mModelCompletionProvider = null;
-        initCompletionEngine();
     }
 
     /**
@@ -1684,15 +1618,6 @@ public class LatinIME extends InputMethodService implements
         return out;
     }
 
-    /** The llama.cpp inference backend if it is compiled in and its native lib loaded, else null. */
-    private helium314.keyboard.latin.completion.InferenceBackend createInferenceBackend(
-            final helium314.keyboard.latin.completion.ModelRepository repo) {
-        final helium314.keyboard.latin.completion.InferenceBackend backend =
-                helium314.keyboard.latin.completion.LlamaSupport.INSTANCE.createBackendOrNull();
-        if (backend == null) Log.w(TAG, "llama.cpp backend not available (disabled or unsupported ABI)");
-        return backend;
-    }
-
     /**
      * Update the multi-word completion strip. The fast prefix-filter runs synchronously on the UI
      * thread (cheap, no model call); a fresh generation is dispatched to a background worker and its
@@ -1715,21 +1640,10 @@ public class LatinIME extends InputMethodService implements
             mCompletionStripView.clear();
             mCompletionStripView.setVisibility(View.GONE);
             if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
-            helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.setEnabled(false);
-            if (mCompletionDebugView != null) mCompletionDebugView.setVisibility(View.GONE);
             return;
         }
         // reserve a stable row while the feature is on, so the strip does not jitter the IME window
         mCompletionStripView.setVisibility(View.VISIBLE);
-        // developer debug overlay (prompt / candidates / tokens/sec), gated on its own setting
-        final boolean debugOn = KtxKt.prefs(this)
-                .getBoolean(Settings.PREF_COMPLETION_DEBUG, Defaults.PREF_COMPLETION_DEBUG);
-        helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.setEnabled(debugOn);
-        if (mCompletionDebugView != null) {
-            mCompletionDebugView.setVisibility(debugOn ? View.VISIBLE : View.GONE);
-            if (debugOn) mCompletionDebugView.render(
-                    helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.getLast());
-        }
         if (mInputLogic.mConnection.hasSlowInputConnection()) {
             mCompletionStripView.clear();
             return;
@@ -1807,10 +1721,6 @@ public class LatinIME extends InputMethodService implements
                         return;
                     }
                     if (mSuggestionStripView != null) mSuggestionStripView.setCompletionGenerating(false);
-                    if (mCompletionDebugView != null && mCompletionDebugView.getVisibility() == View.VISIBLE) {
-                        mCompletionDebugView.render(
-                                helium314.keyboard.latin.completion.CompletionDebug.INSTANCE.getLast());
-                    }
                     if (mCompletionStripView == null) return;
                     // drop stale results: context changed (cursor move, commit, accept, focus) since dispatch
                     if (r == null || mCompletionEngine.getCurrentEpoch() != epochAtDispatch) {
@@ -2193,8 +2103,6 @@ public class LatinIME extends InputMethodService implements
             case TRIM_MEMORY_RUNNING_LOW, TRIM_MEMORY_RUNNING_CRITICAL, TRIM_MEMORY_COMPLETE -> {
                 KeyboardLayoutSet.Companion.onSystemLocaleChanged(); // clears caches, nothing else
                 mKeyboardSwitcher.trimMemory();
-                // free the on-device model under memory pressure; it reloads lazily when next needed
-                if (mModelCompletionProvider != null) mModelCompletionProvider.releaseModel();
                 if (mCompletionEngine != null) mCompletionEngine.invalidate();
             }
             // deallocateMemory always called on hiding, and should not be called when showing
