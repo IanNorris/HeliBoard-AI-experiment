@@ -188,7 +188,6 @@ object Defaults {
     const val PREF_ABC_AFTER_CLIP = false
     const val PREF_ABC_AFTER_SYMBOL_SPACE = true
     const val PREF_HIDE_BOTTOM_SYMBOL_KEY = false
-    const val PREF_COMMA_NEXT_TO_PERIOD = false
     const val PREF_ABC_AFTER_NUMPAD_SPACE = false
     const val PREF_REMOVE_REDUNDANT_POPUPS = false
     const val PREF_SPACE_BAR_TEXT = ""

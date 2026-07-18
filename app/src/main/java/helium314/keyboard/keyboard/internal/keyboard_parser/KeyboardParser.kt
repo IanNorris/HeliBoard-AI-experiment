@@ -264,16 +264,6 @@ class KeyboardParser(private val params: KeyboardParams, private val context: Co
             )
             baseKeys.removeAt(baseKeys.lastIndex)
         }
-        // optionally move the comma so it sits immediately left of the period (both right of space)
-        if (Settings.getValues().mCommaNextToPeriod) {
-            val commaIdx = functionalKeysBottom.indexOfFirst { it.label == KeyLabel.COMMA || it.groupId == KeyData.GROUP_COMMA }
-            if (commaIdx >= 0) {
-                val commaKey = functionalKeysBottom.removeAt(commaIdx)
-                val periodIdx = functionalKeysBottom.indexOfFirst { it.label == KeyLabel.PERIOD || it.groupId == KeyData.GROUP_PERIOD }
-                if (periodIdx >= 0) functionalKeysBottom.add(periodIdx, commaKey)
-                else functionalKeysBottom.add(commaKey)
-            }
-        }
         // add zwnj key next to space if necessary
         val spaceIndex = functionalKeysBottom.indexOfFirst { it.label == KeyLabel.SPACE && it.width <= 0 } // width could be 0 or -1
         if (spaceIndex >= 0) {
