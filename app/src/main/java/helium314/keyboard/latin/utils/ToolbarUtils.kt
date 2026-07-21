@@ -90,7 +90,10 @@ fun getCodeForToolbarKey(key: ToolbarKey) = Settings.getInstance().getCustomTool
     SPLIT -> KeyCode.SPLIT_LAYOUT
     FLOATING -> KeyCode.TOGGLE_FLOATING_WINDOW
     BACKGROUND_GATHERING -> KeyCode.BACKGROUND_GATHERING
-    SYMBOLS -> KeyCode.SYMBOL_ALPHA
+    // toolbar keys are dispatched through KeyboardState.onEvent (not the press/release path), so this
+    // must be SYMBOL (which onEvent toggles alpha<->symbols), not SYMBOL_ALPHA (the press-time code
+    // that onEvent ignores, which left the toolbar Symbols key doing nothing)
+    SYMBOLS -> KeyCode.SYMBOL
 }
 
 fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getCustomToolbarLongpressCode(key) ?: when (key) {
